@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: court-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: lijiayu123
+      MYSQL_DATABASE: court_filing
+      MYSQL_USER: court_user
+      MYSQL_PASSWORD: court_pass
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "3306:3306"
+    networks:
+      - court-net
+
+  app:
+    build: .
+    container_name: court-app
+    environment:
+      DB_HOST: mysql
+      DB_USER: court_user
+      DB_PASSWORD: court_pass
+      DB_NAME: court_filing
+      UPLOAD_FOLDER: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+      - screenshots:/app/screenshots
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mysql
+    networks:
+      - court-net
+    command: >
+      sh -c "sleep 10 && python admin_app.py"
+
+volumes:
+  mysql_data:
+  uploads:
+  screenshots:
+
+networks:
+  court-net:
+    driver: bridge

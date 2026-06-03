@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>案件详情 - {{ case.case_no }} - 法院保全案件管理系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f5f7fa; color: #333; }
+        .header { background: #1a237e; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; }
+        .header a { color: white; text-decoration: none; }
+        .container { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
+        .page-title { font-size: 24px; margin-bottom: 20px; color: #1a237e; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 25px; overflow: hidden; }
+        .card-header { background: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; }
+        .card-header h3 { font-size: 16px; color: #1a237e; }
+        .card-body { padding: 20px; }
+        .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .info-item { display: flex; flex-direction: column; }
+        .info-item label { font-size: 12px; color: #666; margin-bottom: 4px; }
+        .info-item span { font-size: 14px; color: #333; font-weight: 500; }
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .btn-primary { background: #1a237e; color: white; }
+        .btn-danger { background: #c62828; color: white; }
+        .btn-success { background: #2e7d32; color: white; }
+        .btn:hover { opacity: 0.9; }
+        table { width: 100%; border-collapse: collapse; }
+        table th { background: #f8f9fa; padding: 10px; text-align: left; font-size: 13px; color: #555; border-bottom: 1px solid #e9ecef; }
+        table td { padding: 10px; border-bottom: 1px solid #e9ecef; font-size: 13px; }
+        .file-item { display: flex; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 4px; margin-bottom: 8px; }
+        .file-item .icon { margin-right: 10px; font-size: 20px; }
+        .file-item .name { flex: 1; font-size: 13px; }
+        .file-item .path { font-size: 11px; color: #666; }
+        .form-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { font-size: 12px; color: #555; margin-bottom: 4px; }
+        .form-group input, .form-group select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+        .upload-area { border: 2px dashed #ddd; border-radius: 8px; padding: 30px; text-align: center; margin-top: 10px; }
+        .upload-area:hover { border-color: #1a237e; }
+        .upload-area input[type="file"] { margin-top: 10px; }
+        .category-files { margin-bottom: 20px; }
+        .category-files h4 { font-size: 14px; color: #555; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #eee; }
+        .flash { padding: 12px 20px; margin-bottom: 20px; border-radius: 4px; }
+        .flash-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .flash-error { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        .tabs { display: flex; border-bottom: 1px solid #e9ecef; margin-bottom: 20px; }
+        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab.active { border-bottom-color: #1a237e; color: #1a237e; font-weight: 600; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏛️ 法院保全案件管理系统</h1>
+        <a href="/">← 返回列表</a>
+    </div>
+    
+    <div class="container">
+        <h2 class="page-title">📋 {{ case.case_no }} - {{ case.case_name or '未命名案件' }}</h2>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <!-- 案件基本信息 -->
+        <div class="card">
+            <div class="card-header">
+                <h3>📄 案件基本信息</h3>
+                <a href="/case/{{ case.id }}/edit" class="btn btn-primary" style="margin-right: 10px;">✏️ 编辑案件</a>
+                <form method="POST" action="/case/{{ case.id }}/delete" onsubmit="return confirm('确定删除此案件？')" style="display: inline-block;">
+                    <button type="submit" class="btn btn-danger">🗑️ 删除案件</button>
+                </form>
+            </div>
+            <div class="card-body">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>案件编号</label>
+                        <span>{{ case.case_no }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>案件名称</label>
+                        <span>{{ case.case_name or '-' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>保全类型</label>
+                        <span>{{ case.preserve_type or '-' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>案由</label>
+                        <span>{{ case.case_reason or '-' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>受理法院</label>
+                        <span>{{ case.court_name or '-' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>保全金额</label>
+                        <span>{{ "%.2f"|format(case.preserve_amount|float) if case.preserve_amount else '-' }} 元</span>
+                    </div>
+                    <div class="info-item">
+                        <label>担保方式</label>
+                        <span>{{ case.guarantee_type or '-' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>担保价值</label>
+                        <span>{{ "%.2f"|format(case.guarantee_value|float) if case.guarantee_value else '-' }} 元</span>
+                    </div>
+                    {% if case.guarantor_name %}
+                    <div class="info-item">
+                        <label>担保人</label>
+                        <span>{{ case.guarantor_name }}</span>
+                    </div>
+                    {% endif %}
+                    {% if case.guarantee_object %}
+                    <div class="info-item">
+                        <label>担保物名称</label>
+                        <span>{{ case.guarantee_object }}</span>
+                    </div>
+                    {% endif %}
+                    {% if case.pledge_property_type %}
+                    <div class="info-item">
+                        <label>质押财产类型</label>
+                        <span>{{ case.pledge_property_type }}</span>
+                    </div>
+                    {% endif %}
+                    {% if case.mortgage_property_type %}
+                    <div class="info-item">
+                        <label>抵押财产类型</label>
+                        <span>{{ case.mortgage_property_type }}</span>
+                    </div>
+                    {% endif %}
+                    {% if case.guarantee_remark %}
+                    <div class="info-item">
+                        <label>担保说明</label>
+                        <span>{{ case.guarantee_remark }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="info-item">
+                        <label>创建时间</label>
+                        <span>{{ case.created_at.strftime('%Y-%m-%d %H:%M') if case.created_at else '-' }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 申请人/被申请人信息 -->
+        <div class="card">
+            <div class="card-header">
+                <h3>👤 当事人信息</h3>
+            </div>
+            <div class="card-body">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>申请人</label>
+                        <span>{{ case.applicant_name or '-' }} ({{ case.applicant_type or '-' }})</span>
+                    </div>
+                    <div class="info-item">
+                        <label>申请人证件号</label>
+                        <span>{{ case.applicant_cert_no or '-' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>申请人电话</label>
+                        <span>{{ case.applicant_phone or '-' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>被申请人</label>
+                        <span>{{ case.respondent_name or '-' }} ({{ case.respondent_type or '-' }})</span>
+                    </div>
+                    <div class="info-item">
+                        <label>被申请人证件号</label>
+                        <span>{{ case.respondent_id or '-' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>被申请人电话</label>
+                        <span>{{ case.respondent_phone or '-' }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 

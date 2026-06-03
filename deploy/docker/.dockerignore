@@ -1,0 +1,22 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+venv/
+
+# 数据
+uploads/*
+!uploads/.gitkeep
+screenshots/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

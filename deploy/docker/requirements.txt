@@ -1,0 +1,21 @@
+# Web自动化
+playwright==1.40.0
+
+# 数据库
+SQLAlchemy==2.0.23
+PyMySQL==1.1.0
+
+# 配置管理
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# 图像处理
+Pillow==10.1.0
+
+# 日志
+loguru==0.7.2
+
+# 可选：本地OCR
+# pytesseract==0.3.10
+# opencv-python==4.8.1.78

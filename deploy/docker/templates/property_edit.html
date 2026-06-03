@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>编辑财产线索 - {{ case_id }} - 法院保全案件管理系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f5f7fa; color: #333; }
+        .header { background: #1a237e; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; }
+        .header a { color: white; text-decoration: none; }
+        .container { max-width: 900px; margin: 30px auto; padding: 0 20px; }
+        .page-title { font-size: 24px; margin-bottom: 20px; color: #1a237e; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 25px; overflow: hidden; }
+        .card-header { background: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #e9ecef; }
+        .card-header h3 { font-size: 16px; color: #1a237e; }
+        .card-body { padding: 20px; }
+        .form-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { font-size: 12px; color: #555; margin-bottom: 4px; }
+        .form-group input, .form-group select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+        .btn { padding: 10px 24px; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .btn-primary { background: #1a237e; color: white; }
+        .btn-secondary { background: #666; color: white; }
+        .btn:hover { opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏛️ 法院保全案件管理系统</h1>
+        <a href="/case/{{ case_id }}">← 返回案件</a>
+    </div>
+    
+    <div class="container">
+        <h2 class="page-title">✏️ 编辑财产线索</h2>
+        
+        <div class="card">
+            <div class="card-header">
+                <h3>财产信息</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="/case/{{ case_id }}/property/{{ property_id }}/edit">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>财产类型 *</label>
+                            <select name="property_type" id="propertyType" required onchange="togglePropertyFields()">
+                                <option value="存款" {% if prop.property_type == '存款' %}selected{% endif %}>存款</option>
+                                <option value="房产" {% if prop.property_type == '房产' %}selected{% endif %}>房产</option>
+                                <option value="土地使用权" {% if prop.property_type == '土地使用权' %}selected{% endif %}>土地使用权</option>
+                                <option value="集体土地所有权" {% if prop.property_type == '集体土地所有权' %}selected{% endif %}>集体土地所有权</option>
+                                <option value="森林、林木所有权" {% if prop.property_type == '森林、林木所有权' %}selected{% endif %}>森林、林木所有权</option>
+                                <option value="船舶" {% if prop.property_type == '船舶' %}selected{% endif %}>船舶</option>
+                                <option value="珠宝玉石首饰" {% if prop.property_type == '珠宝玉石首饰' %}selected{% endif %}>珠宝玉石首饰</option>
+                                <option value="债权" {% if prop.property_type == '债权' %}selected{% endif %}>债权</option>
+                                <option value="知识产权" {% if prop.property_type == '知识产权' %}selected{% endif %}>知识产权</option>
+                                <option value="股权" {% if prop.property_type == '股权' %}selected{% endif %}>股权</option>
+                                <option value="股票" {% if prop.property_type == '股票' %}selected{% endif %}>股票</option>
+                                <option value="基金" {% if prop.property_type == '基金' %}selected{% endif %}>基金</option>
+                                <option value="债券" {% if prop.property_type == '债券' %}selected{% endif %}>债券</option>
+                                <option value="交通运输工具" {% if prop.property_type == '交通运输工具' %}selected{% endif %}>交通运输工具</option>
+                                <option value="机器设备" {% if prop.property_type == '机器设备' %}selected{% endif %}>机器设备</option>
+                                <option value="货币现金" {% if prop.property_type == '货币现金' %}selected{% endif %}>货币现金</option>
+                                <option value="产品、原材料" {% if prop.property_type == '产品、原材料' %}selected{% endif %}>产品、原材料</option>
+                                <option value="探矿、采矿权" {% if prop.property_type == '探矿、采矿权' %}selected{% endif %}>探矿、采矿权</option>
+                                <option value="古玩字画" {% if prop.property_type == '古玩字画' %}selected{% endif %}>古玩字画</option>
+                                <option value="留置的货物" {% if prop.property_type == '留置的货物' %}selected{% endif %}>留置的货物</option>
+                                <option value="船用物料" {% if prop.property_type == '船用物料' %}selected{% endif %}>船用物料</option>
+                                <option value="船用燃料" {% if prop.property_type == '船用燃料' %}selected{% endif %}>船用燃料</option>
+                                <option value="船载货物" {% if prop.property_type == '船载货物' %}selected{% endif %}>船载货物</option>
+                                <option value="其他" {% if prop.property_type == '其他' %}selected{% endif %}>其他</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>财产所有人 *</label>
+                            <input type="text" name="owner" value="{{ prop.owner or '' }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>财产价值 *</label>
+                            <input type="number" name="property_value" value="{{ prop.property_value or '' }}" step="0.01" required>
+                        </div>
+                    </div>
+
+                    <!-- 存款/货币现金 -->
+                    <div class="form-row prop-group" data-types="存款,货币现金">
+                        <div class="form-group">
+                            <label>开户行所在地</label>
+                            <input type="text" name="property_province" value="{{ prop.property_province or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>开户银行名称</label>
+                            <input type="text" name="bank_name" value="{{ prop.bank_name or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>开户账号</label>
+                            <input type="text" name="bank_account" value="{{ prop.bank_account or '' }}">
+                        </div>
+                    </div>
+                    <div class="form-row prop-group" data-types="存款,货币现金">
+                        <div class="form-group">
+                            <label>数额</label>
+                            <input type="number" name="amount" value="{{ prop.amount or '' }}" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>币种</label>
+                            <select name="currency">
+                                <option value="CNY" {% if prop.currency == 'CNY' %}selected{% endif %}>人民币</option>
+                                <option value="USD" {% if prop.currency == 'USD' %}selected{% endif %}>美元</option>
+                                <option value="HKD" {% if prop.currency == 'HKD' %}selected{% endif %}>港币</option>
+                                <option value="EUR" {% if prop.currency == 'EUR' %}selected{% endif %}>欧元</option>
+                            </select>
+                        </div>
+                        <div class="form-group"></div>
+                    </div>
+
+                    <!-- 房产/土地使用权 -->
+                    <div class="form-row prop-group" data-types="房产,土地使用权">
+                        <div class="form-group">
+                            <label>所在省份</label>
+                            <input type="text" name="property_province" value="{{ prop.property_province or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>所在城市</label>
+                            <input type="text" name="property_city" value="{{ prop.property_city or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>详细位置</label>
+                            <input type="text" name="property_location" value="{{ prop.property_location or '' }}">
+                        </div>
+                    </div>
+                    <div class="form-row prop-group" data-types="房产,土地使用权">
+                        <div class="form-group">
+                            <label>产权证号</label>
+                            <input type="text" name="property_cert_no" value="{{ prop.property_cert_no or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>详细地址</label>
+                            <input type="text" name="property_detail_location" value="{{ prop.property_detail_location or '' }}">
+                        </div>
+                        <div class="form-group"></div>
+                    </div>
+
+                    <!-- 土地使用权 面积 -->
+                    <div class="form-row prop-group" data-types="土地使用权">
+                        <div class="form-group">
+                            <label>面积</label>
+                            <input type="number" name="property_area" value="{{ prop.property_area or '' }}" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>单位</label>
+                            <select name="property_area_unit">
+                                <option value="平方米" {% if prop.property_area_unit == '平方米' %}selected{% endif %}>平方米</option>
+                                <option value="亩" {% if prop.property_area_unit == '亩' %}selected{% endif %}>亩</option>
+                                <option value="公顷" {% if prop.property_area_unit == '公顷' %}selected{% endif %}>公顷</option>
+                            </select>
+                        </div>
+                        <div class="form-group"></div>
+                    </div>
+
+                    <!-- 股权 -->
+                    <div class="form-row prop-group" data-types="股权">
+                        <div class="form-group">
+                            <label>发行单位注册地</label>
+                            <input type="text" name="stock_reg_location" value="{{ prop.stock_reg_location or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>持股公司名称</label>
+                            <input type="text" name="stock_company_name" value="{{ prop.stock_company_name or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>出资比例(%)</label>
+                            <input type="number" name="stock_ratio" value="{{ prop.stock_ratio or '' }}" step="0.01">
+                        </div>
+                    </div>
+
+                    <!-- 股票 -->
+                    <div class="form-row prop-group" data-types="股票">
+                        <div class="form-group">
+                            <label>发行单位注册地</label>
+                            <input type="text" name="stock_reg_location" value="{{ prop.stock_reg_location or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>股票名称</label>
+                            <input type="text" name="stock_name" value="{{ prop.stock_name or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>股票代码</label>
+                            <input type="text" name="stock_code" value="{{ prop.stock_code or '' }}">
+                        </div>
+                    </div>
+                    <div class="form-row prop-group" data-types="股票">
+                        <div class="form-group">
+                            <label>持股数量</label>
+                            <input type="number" name="stock_quantity" value="{{ prop.stock_quantity or '' }}">
+                        </div>
+                        <div class="form-group"></div>
+                        <div class="form-group"></div>
+                    </div>
+
+                    <!-- 基金 -->
+                    <div class="form-row prop-group" data-types="基金">
+                        <div class="form-group">
+                            <label>发行单位注册地</label>
+                            <input type="text" name="stock_reg_location" value="{{ prop.stock_reg_location or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>基金名称</label>
+                            <input type="text" name="fund_name" value="{{ prop.fund_name or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>基金数量</label>
+                            <input type="number" name="fund_quantity" value="{{ prop.fund_quantity or '' }}">
+                        </div>
+                    </div>
+
+                    <!-- 债券 -->
+                    <div class="form-row prop-group" data-types="债券">
+                        <div class="form-group">
+                            <label>发行单位注册地</label>
+                            <input type="text" name="stock_reg_location" value="{{ prop.stock_reg_location or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>债券名称</label>
+                            <input type="text" name="bond_name" value="{{ prop.bond_name or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>债券面值(元)</label>
+                            <input type="number" name="bond_face_value" value="{{ prop.bond_face_value or '' }}" step="0.01">
+                        </div>
+                    </div>
+
+                    <!-- 交通运输工具 -->
+                    <div class="form-row prop-group" data-types="交通运输工具">
+                        <div class="form-group">
+                            <label>车辆归属地</label>
+                            <input type="text" name="vehicle_location" value="{{ prop.vehicle_location or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>车辆品牌型号</label>
+                            <input type="text" name="vehicle_brand_model" value="{{ prop.vehicle_brand_model or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>车辆类型</label>
+                            <input type="text" name="vehicle_type" value="{{ prop.vehicle_type or '' }}">
+                        </div>
+                    </div>
+                    <div class="form-row prop-group" data-types="交通运输工具">
+                        <div class="form-group">
+                            <label>车牌号</label>
+                            <input type="text" name="vehicle_plate_no" value="{{ prop.vehicle_plate_no or '' }}">
+                        </div>
+                        <div class="form-group"></div>
+                        <div class="form-group"></div>
+                    </div>
+
+                    <!-- 机器设备 -->
+                    <div class="form-row prop-group" data-types="机器设备">
+                        <div class="form-group">
+                            <label>设备名称</label>
+                            <input type="text" name="equipment_name" value="{{ prop.equipment_name or '' }}">
+                        </div>
+                        <div class="form-group"></div>
+                        <div class="form-group"></div>
+                    </div>
+
+                    <!-- 描述 -->
+                    <div class="form-row prop-group" data-types="集体土地所有权,森林、林木所有权,船舶,珠宝玉石首饰,债权,知识产权,产品、原材料,探矿、采矿权,古玩字画,留置的货物,船用物料,船用燃料,船载货物,其他">
+                        <div class="form-group" style="grid-column: span 3;">
+                            <label>描述</label>
+                            <input type="text" name="description" value="{{ prop.description or '' }}">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">💾 保存</button>
+                    <a href="/case/{{ case_id }}" class="btn btn-secondary">取消</a>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function togglePropertyFields() {
+        var selectedType = document.getElementById('propertyType').value;
+        var groups = document.querySelectorAll('.prop-group');
+        groups.forEach(function(group) {
+            var types = group.getAttribute('data-types').split(',');
+            if (types.includes(selectedType)) {
+                group.style.display = 'grid';
+            } else {
+                group.style.display = 'none';
+            }
+        });
+    }
+    document.addEventListener('DOMContentLoaded', togglePropertyFields);
+    </script>
+</body>
+</html>

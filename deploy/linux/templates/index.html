@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>法院保全案件管理系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #333; }
+        
+        /* 顶部导航 */
+        .topbar { background: #1a237e; color: white; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; left: 0; right: 0; z-index: 100; }
+        .topbar .logo { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .topbar .user-info { display: flex; align-items: center; gap: 16px; font-size: 13px; }
+        .topbar .user-info span { opacity: 0.9; }
+        .topbar .logout { color: white; text-decoration: none; padding: 6px 14px; border-radius: 4px; background: rgba(255,255,255,0.15); font-size: 13px; }
+        .topbar .logout:hover { background: rgba(255,255,255,0.25); }
+        
+        /* 侧边栏 */
+        .sidebar { position: fixed; top: 56px; left: 0; bottom: 0; width: 200px; background: white; border-right: 1px solid #e8e8e8; z-index: 90; padding: 16px 0; }
+        .sidebar-menu { list-style: none; }
+        .sidebar-menu li { padding: 0; }
+        .sidebar-menu a { display: flex; align-items: center; gap: 10px; padding: 12px 20px; color: #555; text-decoration: none; font-size: 14px; transition: all 0.2s; border-left: 3px solid transparent; }
+        .sidebar-menu a:hover { background: #f5f5f5; color: #1a237e; }
+        .sidebar-menu a.active { background: #e8eaf6; color: #1a237e; border-left-color: #1a237e; font-weight: 500; }
+        .sidebar-menu .icon { font-size: 16px; width: 20px; text-align: center; }
+        
+        /* 主内容区 */
+        .main { margin-left: 200px; margin-top: 56px; padding: 24px; min-height: calc(100vh - 56px); }
+        
+        /* 统计卡片 */
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 16px; }
+        .stat-icon { width: 48px; height: 48px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .stat-icon.blue { background: #e3f2fd; }
+        .stat-icon.green { background: #e8f5e9; }
+        .stat-icon.orange { background: #fff3e0; }
+        .stat-icon.purple { background: #f3e5f5; }
+        .stat-text h4 { font-size: 13px; color: #888; font-weight: 400; margin-bottom: 4px; }
+        .stat-text .number { font-size: 28px; font-weight: 600; color: #333; }
+        
+        /* 操作栏 */
+        .toolbar { background: white; padding: 16px 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .toolbar .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: opacity 0.2s; }
+        .toolbar .btn:hover { opacity: 0.85; }
+        .btn-primary { background: #1a237e; color: white; }
+        .btn-success { background: #2e7d32; color: white; }
+        .btn-info { background: #1565c0; color: white; }
+        .btn-warning { background: #f57c00; color: white; }
+        .btn-danger { background: #c62828; color: white; }
+        .btn-secondary { background: #f5f5f5; color: #555; border: 1px solid #ddd; }
+        
+        /* 表格 */
+        .table-wrap { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
+        .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .table-wrap thead th { background: #fafafa; padding: 12px 16px; text-align: left; font-weight: 600; color: #555; border-bottom: 1px solid #e8e8e8; white-space: nowrap; }
+        .table-wrap tbody td { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; color: #333; }
+        .table-wrap tbody tr:hover { background: #fafafa; }
+        .table-wrap tbody tr:last-child td { border-bottom: none; }
+        .table-wrap a { color: #1a237e; text-decoration: none; }
+        .table-wrap a:hover { text-decoration: underline; }
+        
+        /* 标签 */
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+        .badge-blue { background: #e3f2fd; color: #1565c0; }
+        .badge-green { background: #e8f5e9; color: #2e7d32; }
+        .badge-orange { background: #fff3e0; color: #ef6c00; }
+        .badge-red { background: #ffebee; color: #c62828; }
+        .badge-purple { background: #f3e5f5; color: #7b1fa2; }
+        .badge-gray { background: #f5f5f5; color: #666; }
+        
+        /* 空状态 */
+        .empty { text-align: center; padding: 60px; color: #999; }
+        .empty-icon { font-size: 48px; margin-bottom: 12px; }
+        
+        /* Flash */
+        .flash { padding: 10px 16px; margin-bottom: 16px; border-radius: 4px; font-size: 13px; }
+        .flash-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .flash-error { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        
+        /* 分页 */
+        .pagination { display: flex; justify-content: center; gap: 4px; margin-top: 16px; }
+        .pagination a { padding: 6px 12px; border-radius: 4px; text-decoration: none; color: #555; font-size: 13px; border: 1px solid #e8e8e8; }
+        .pagination a:hover { background: #f5f5f5; }
+        .pagination a.active { background: #1a237e; color: white; border-color: #1a237e; }
+        
+        /* Modal */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; justify-content: center; align-items: center; }
+        .modal-overlay.show { display: flex; }
+        .modal { background: white; border-radius: 8px; width: 480px; max-width: 90%; padding: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        .modal h3 { margin-bottom: 16px; color: #1a237e; font-size: 18px; }
+        .drop-zone { border: 2px dashed #ddd; border-radius: 6px; padding: 32px; text-align: center; color: #666; cursor: pointer; transition: all 0.2s; }
+        .drop-zone:hover, .drop-zone.dragover { border-color: #3949ab; background: #e8eaf6; color: #1a237e; }
+        .drop-zone .icon { font-size: 36px; margin-bottom: 8px; }
+        .file-info { margin-top: 12px; padding: 10px; background: #f5f7fa; border-radius: 4px; display: none; }
+        .file-info.show { display: block; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+        .modal-actions button { flex: 1; padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .modal-actions .btn-submit { background: #2e7d32; color: white; }
+        .modal-actions .btn-submit:disabled { background: #a5d6a7; cursor: not-allowed; }
+        .modal-actions .btn-cancel { background: #e0e0e0; color: #333; }
+        .template-tip { margin-top: 12px; font-size: 12px; color: #666; text-align: center; }
+        .template-tip a { color: #3949ab; }
+        
+        /* 底部操作 */
+        .bottom-bar { display: flex; gap: 12px; align-items: center; margin-top: 16px; padding: 0 4px; }
+        .bottom-bar span { color: #888; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="logo">&#x2696;&#xFE0F; 法院保全案件管理系统</div>
+        <div class="user-info">
+            <span>&#x1F464; {{ current_user.get("login_username", "-") }} | {{ current_user.get("login_user_type", "个人用户") }}</span>
+            <a href="/logout" class="logout">退出</a>
+        </div>
+    </div>
+    
+    <div class="sidebar">
+        <ul class="sidebar-menu">
+            <li><a href="/" class="active"><span class="icon">&#x1F4CB;</span> 案件列表</a></li>
+            <li><a href="/case/add"><span class="icon">&#x2795;</span> 新增案件</a></li>
+            <li><a href="/system-config"><span class="icon">&#x2699;&#xFE0F;</span> 系统配置</a></li>
+            <li><a href="/auto-filing/status"><span class="icon">&#x1F4CA;</span> 立案进度</a></li>
+            <li><a href="/template/download"><span class="icon">&#x1F4E5;</span> 下载模板</a></li>
+        </ul>
+    </div>
+    
+    <div class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-icon blue">&#x1F4C1;</div>
+                <div class="stat-text">
+                    <h4>总案件数</h4>
+                    <div class="number">{{ cases|length }}</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">&#x2705;</div>
+                <div class="stat-text">
+                    <h4>已自动立案</h4>
+                    <div class="number">{{ filed_count }}</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon orange">&#x26A0;&#xFE0F;</div>
+                <div class="stat-text">
+                    <h4>诉前保全</h4>
+                    <div class="number">{{ cases|selectattr("preserve_type", "equalto", "诉前保全")|list|length }}</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon purple">&#x1F4BC;</div>
+                <div class="stat-text">
+                    <h4>诉讼保全</h4>
+                    <div class="number">{{ cases|selectattr("preserve_type", "equalto", "诉讼保全")|list|length }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="toolbar">
+            <button class="btn btn-success" onclick="openUpload()">&#x1F4C2; 批量导入案件</button>
+            <button class="btn btn-info" onclick="openBatchFiles()">&#x1F4E6; 批量上传文件</button>
+            <form method="POST" action="/auto-filing/start" style="display:inline" onsubmit="return confirm("确定启动批量自动立案？")">
+                <button type="submit" class="btn btn-danger">&#x1F680; 启动自动立案</button>
+            </form>
+            <a href="/case/add" class="btn btn-primary">&#x2795; 新增案件</a>
+        </div>
+        
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th width="40"><input type="checkbox" id="selectAll" onclick="toggleSelectAll()"></th>
+                        <th>案件编号</th>
+                        <th>案件名称</th>
+                        <th>申请人</th>
+                        <th>被申请人</th>
+                        <th>保全金额</th>
+                        <th>法院</th>
+                        <th>财产类型</th>
+                        <th>担保方式</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for case in cases %}
+                    <tr>
+                        <td><input type="checkbox" value="{{ case.case_no }}" class="case-checkbox"></td>
+                        <td><a href="/case/{{ case.id }}">{{ case.case_no }}</a></td>
+                        <td>{{ case.case_name or "-" }}</td>
+                        <td>{{ case.applicant_name or "-" }}</td>
+                        <td>{{ case.respondent_name or "-" }}</td>
+                        <td>{{ "%.2f"|format(case.preserve_amount|float) if case.preserve_amount else "-" }}</td>
+                        <td>{{ case.court_name or "-" }}</td>
+                        <td>
+                            {% if case.property_type == "存款" %}
+                                <span class="badge badge-blue">存款</span>
+                            {% elif case.property_type == "房产" %}
+                                <span class="badge badge-purple">房产</span>
+                            {% elif case.property_type == "股票" %}
+                                <span class="badge badge-green">股票</span>
+                            {% elif case.property_type == "车辆" %}
+                                <span class="badge badge-orange">车辆</span>
+                            {% elif case.property_type == "股权" %}
+                                <span class="badge badge-red">股权</span>
+                            {% else %}
+                                <span class="badge badge-gray">{{ case.property_type or "-" }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ case.guarantee_type or "-" }}</td>
+                        <td>
+                            {% if case.status == 1 %}
+                                <span class="badge badge-green">已立案</span>
+                            {% else %}
+                                <span class="badge badge-orange">待立案</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ case.created_at.strftime("%Y-%m-%d") if case.created_at else "-" }}</td>
+                        <td><a href="/case/{{ case.id }}">查看</a></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="12" class="empty">
+                            <div class="empty-icon">&#x1F4C1;</div>
+                            <div>暂无案件数据</div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="bottom-bar">
+            <form method="POST" action="/auto-filing/selected" id="selectedForm">
+                <button type="submit" class="btn btn-danger" id="btnAutoFile">&#x1F680; 对选中案件自动立案</button>
+            </form>
+            <span>已选择 <strong id="selectedCount">0</strong> 个案件</span>
+        </div>
+    </div>
+    
+    <!-- 批量导入弹窗 -->
+    <div class="modal-overlay" id="uploadModal">
+        <div class="modal">
+            <h3>&#x1F4C2; 批量导入案件</h3>
+            <div class="drop-zone" id="dropZone" onclick="document.getElementById("fileInput").click()">
+                <div class="icon">&#x1F4C1;</div>
+                <div>点击选择或拖拽 Excel 文件到此处</div>
+                <div style="font-size:12px;margin-top:6px;">支持 .xlsx / .xls</div>
+            </div>
+            <div class="file-info" id="fileInfo">
+                <strong>已选择：</strong><span id="fileName"></span>
+            </div>
+            <div class="template-tip">
+                请先 <a href="/template/download" target="_blank">下载 Excel 模板</a> 填写后上传
+            </div>
+            <form method="POST" action="/template/upload" enctype="multipart/form-data" id="uploadForm">
+                <input type="file" name="excel_file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="onFileSelect(this)">
+                <div class="modal-actions">
+                    <button type="submit" class="btn-submit" id="btnSubmit" disabled>开始导入</button>
+                    <button type="button" class="btn-cancel" onclick="closeUpload()">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- 批量上传文件弹窗 -->
+    <div class="modal-overlay" id="batchFilesModal">
+        <div class="modal">
+            <h3>&#x1F4E6; 批量上传案件文件</h3>
+            <div class="drop-zone" id="dropZoneFiles" onclick="document.getElementById("zipInput").click()">
+                <div class="icon">&#x1F4E6;</div>
+                <div>点击选择或拖拽 zip 压缩包到此处</div>
+                <div style="font-size:12px;margin-top:6px;">仅支持 .zip 格式</div>
+            </div>
+            <div class="file-info" id="zipInfo">
+                <strong>已选择：</strong><span id="zipName"></span>
+            </div>
+            <div class="template-tip" style="text-align:left;background:#f5f7fa;padding:12px;border-radius:4px;margin-top:12px;">
+                <strong>压缩包结构：</strong><br>
+                <pre style="margin:8px 0;font-size:11px;color:#666;">保全2026001/
+  保全申请书/01_保全申请书.pdf
+  起诉状/起诉状.doc
+  身份证明材料/
+  担保材料/</pre>
+            </div>
+            <form method="POST" action="/batch/files/upload" enctype="multipart/form-data" id="batchFilesForm">
+                <input type="file" name="zip_file" id="zipInput" accept=".zip" style="display:none" onchange="onZipSelect(this)">
+                <div class="modal-actions">
+                    <button type="submit" class="btn-submit" id="btnZipSubmit" disabled>开始上传</button>
+                    <button type="button" class="btn-cancel" onclick="closeBatchFiles()">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        function toggleSelectAll() {
+            const all = document.getElementById("selectAll").checked;
+            document.querySelectorAll(".case-checkbox").forEach(cb => cb.checked = all);
+            updateSelectedCount();
+        }
+        function updateSelectedCount() {
+            const count = document.querySelectorAll(".case-checkbox:checked").length;
+            document.getElementById("selectedCount").textContent = count;
+        }
+        document.querySelectorAll(".case-checkbox").forEach(cb => {
+            cb.addEventListener("change", updateSelectedCount);
+        });
+        document.getElementById("selectedForm").addEventListener("submit", function(e) {
+            e.preventDefault();
+            const checked = document.querySelectorAll(".case-checkbox:checked");
+            if (checked.length === 0) { alert("请先选择案件"); return false; }
+            if (!confirm("确定对选中的 " + checked.length + " 个案件启动自动立案？")) return false;
+            this.querySelectorAll("input[type=hidden]").forEach(el => el.remove());
+            checked.forEach(cb => {
+                const input = document.createElement("input");
+                input.type = "hidden"; input.name = "case_nos"; input.value = cb.value;
+                this.appendChild(input);
+            });
+            this.submit();
+        });
+        function openUpload() { document.getElementById("uploadModal").classList.add("show"); }
+        function closeUpload() {
+            document.getElementById("uploadModal").classList.remove("show");
+            document.getElementById("fileInput").value = "";
+            document.getElementById("fileInfo").classList.remove("show");
+            document.getElementById("btnSubmit").disabled = true;
+        }
+        function onFileSelect(input) {
+            if (input.files && input.files[0]) {
+                document.getElementById("fileName").textContent = input.files[0].name;
+                document.getElementById("fileInfo").classList.add("show");
+                document.getElementById("btnSubmit").disabled = false;
+            }
+        }
+        const dropZone = document.getElementById("dropZone");
+        dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
+        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+        dropZone.addEventListener("drop", (e) => {
+            e.preventDefault(); dropZone.classList.remove("dragover");
+            const files = e.dataTransfer.files;
+            if (files.length) { const input = document.getElementById("fileInput"); const dt = new DataTransfer(); dt.items.add(files[0]); input.files = dt.files; onFileSelect(input); }
+        });
+        document.getElementById("uploadModal").addEventListener("click", function(e) { if (e.target === this) closeUpload(); });
+        function openBatchFiles() { document.getElementById("batchFilesModal").classList.add("show"); }
+        function closeBatchFiles() {
+            document.getElementById("batchFilesModal").classList.remove("show");
+            document.getElementById("zipInput").value = "";
+            document.getElementById("zipInfo").classList.remove("show");
+            document.getElementById("btnZipSubmit").disabled = true;
+        }
+        function onZipSelect(input) {
+            if (input.files && input.files[0]) {
+                document.getElementById("zipName").textContent = input.files[0].name;
+                document.getElementById("zipInfo").classList.add("show");
+                document.getElementById("btnZipSubmit").disabled = false;
+            }
+        }
+        const dropZoneFiles = document.getElementById("dropZoneFiles");
+        dropZoneFiles.addEventListener("dragover", (e) => { e.preventDefault(); dropZoneFiles.classList.add("dragover"); });
+        dropZoneFiles.addEventListener("dragleave", () => dropZoneFiles.classList.remove("dragover"));
+        dropZoneFiles.addEventListener("drop", (e) => {
+            e.preventDefault(); dropZoneFiles.classList.remove("dragover");
+            const files = e.dataTransfer.files;
+            if (files.length) { const input = document.getElementById("zipInput"); const dt = new DataTransfer(); dt.items.add(files[0]); input.files = dt.files; onZipSelect(input); }
+        });
+        document.getElementById("batchFilesModal").addEventListener("click", function(e) { if (e.target === this) closeBatchFiles(); });
+        document.getElementById("batchFilesForm").addEventListener("submit", function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const btn = document.getElementById("btnZipSubmit");
+            const originalText = btn.textContent;
+            btn.disabled = true; btn.textContent = "上传中...";
+            fetch("/batch/files/upload", { method: "POST", body: formData })
+                .then(r => { if (r.redirected) window.location.href = r.url; else return r.text().then(t => { document.open(); document.write(t); document.close(); }); })
+                .catch(err => { alert("上传失败: " + err); btn.disabled = false; btn.textContent = originalText; });
+        });
+    </script>
+</body>
+</html>
