@@ -1,0 +1,72 @@
+[
+  {
+    "name": "创建测试文件.bat",
+    "rel_path": "创建测试文件.bat",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\创建测试文件.bat",
+    "size": 622,
+    "size_kb": 0.61
+  },
+  {
+    "name": "01_保全申请书.pdf",
+    "rel_path": "保全申请书\\01_保全申请书.pdf",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\保全申请书\\01_保全申请书.pdf",
+    "size": 9,
+    "size_kb": 0.01
+  },
+  {
+    "name": "其他材料.doc",
+    "rel_path": "其他材料\\其他材料.doc",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\其他材料\\其他材料.doc",
+    "size": 9216,
+    "size_kb": 9.0
+  },
+  {
+    "name": "06_担保函.pdf",
+    "rel_path": "担保材料\\06_担保函.pdf",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\担保材料\\06_担保函.pdf",
+    "size": 9,
+    "size_kb": 0.01
+  },
+  {
+    "name": "07_保证人证照.pdf",
+    "rel_path": "担保材料\\07_保证人证照.pdf",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\担保材料\\07_保证人证照.pdf",
+    "size": 9,
+    "size_kb": 0.01
+  },
+  {
+    "name": "证据材料.doc",
+    "rel_path": "证据材料\\证据材料.doc",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\证据材料\\证据材料.doc",
+    "size": 9216,
+    "size_kb": 9.0
+  },
+  {
+    "name": "起诉状.doc",
+    "rel_path": "起诉状\\起诉状.doc",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\起诉状\\起诉状.doc",
+    "size": 9216,
+    "size_kb": 9.0
+  },
+  {
+    "name": "03_申请人证照.pdf",
+    "rel_path": "身份证明材料\\03_申请人证照.pdf",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\身份证明材料\\03_申请人证照.pdf",
+    "size": 9,
+    "size_kb": 0.01
+  },
+  {
+    "name": "04_被申请人身份证.pdf",
+    "rel_path": "身份证明材料\\04_被申请人身份证.pdf",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\身份证明材料\\04_被申请人身份证.pdf",
+    "size": 9,
+    "size_kb": 0.01
+  },
+  {
+    "name": "05_代理人授权书.pdf",
+    "rel_path": "身份证明材料\\05_代理人授权书.pdf",
+    "full_path": "C:\\court-auto-filing\\uploads\\保全2026001\\身份证明材料\\05_代理人授权书.pdf",
+    "size": 9,
+    "size_kb": 0.01
+  }
+]

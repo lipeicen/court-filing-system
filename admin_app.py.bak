@@ -1,0 +1,888 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+法院保全案件后台管理系统
+功能：案件数据录入、财产线索管理、文件上传、案件列表查看、Excel批量导入
+"""
+
+import os
+import sys
+import shutil
+import pymysql
+import io
+import re
+from datetime import datetime
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_file
+from werkzeug.utils import secure_filename
+
+try:
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    HAS_OPENPYXL = True
+except ImportError:
+    HAS_OPENPYXL = False
+
+app = Flask(__name__, template_folder='admin/templates', static_folder='admin/static')
+app.secret_key = 'court_filing_secret_key_2024'
+
+# 数据库配置
+DB_CONFIG = {
+    'host': 'localhost',
+    'user': 'root',
+    'password': 'lijiayu123',
+    'database': 'court_filing',
+    'charset': 'utf8mb4'
+}
+
+UPLOAD_BASE = r'C:\court-auto-filing\uploads'
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'}
+PROPERTY_TYPES = [
+    '存款', '房产', '土地使用权', '集体土地所有权', '森林、林木所有权',
+    '船舶', '珠宝玉石首饰', '债权', '知识产权', '股权', '股票', '基金',
+    '债券', '交通运输工具', '机器设备', '货币现金', '产品、原材料',
+    '探矿、采矿权', '古玩字画', '留置的货物', '船用物料', '船用燃料',
+    '船载货物', '其他'
+]
+GUARANTEE_TYPES = ['提供保证人', '设定抵押', '设定质押', '交纳保证金']
+APPLICANT_TYPES = ['自然人', '法人', '非法人组织']
+RESPONDENT_TYPES = ['自然人', '法人', '非法人组织']
+FILE_CATEGORIES = ['保全申请书', '起诉状', '立案受理通知书', '身份证明材料', '担保材料', '证据材料', '设定质押', '其他材料']
+
+# Excel模板字段定义（与cases表+property_clues表核心字段对应）
+EXCEL_TEMPLATE_COLUMNS = [
+    ('case_no', '案件编号', True),
+    ('case_name', '案件名称', True),
+    ('preserve_type', '保全类别', False),
+    ('case_reason', '案由', False),
+    ('court_name', '申请法院', True),
+    ('preserve_amount', '保全金额', True),
+    ('applicant_type', '申请人类型', False),
+    ('applicant_name', '申请人姓名', True),
+    ('applicant_cert_no', '申请人身份证号', True),
+    ('applicant_gender', '申请人性别', False),
+    ('applicant_phone', '申请人手机号', True),
+    ('applicant_address', '申请人地址', False),
+    ('respondent_type', '被申请人类型', False),
+    ('respondent_name', '被申请人姓名', True),
+    ('respondent_cert_no', '被申请人身份证号', True),
+    ('respondent_gender', '被申请人性别', False),
+    ('respondent_phone', '被申请人手机号', False),
+    ('respondent_address', '被申请人地址', False),
+    ('respondent_residence', '被申请人经常居住地', False),
+    ('property_type', '财产类型', True),
+    ('property_owner', '财产所有人', False),
+    ('bank_name', '开户银行', False),
+    ('bank_account', '银行账号', False),
+    ('amount', '数额', False),
+    ('currency', '币种', False),
+    ('property_value', '财产价值', False),
+    ('property_province', '财产所在省份', False),
+    ('guarantee_type', '担保方式', False),
+    ('guarantee_value', '担保价值', False),
+    ('guarantor_name', '担保人姓名', False),
+    ('guarantee_object', '担保物名称', False),
+]
+
+
+def get_db():
+    return pymysql.connect(**DB_CONFIG)
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def save_uploaded_file(case_no, category, file):
+    if file and allowed_file(file.filename):
+        case_dir = os.path.join(UPLOAD_BASE, case_no, category)
+        os.makedirs(case_dir, exist_ok=True)
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(case_dir, filename)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        file.save(filepath)
+        return filepath
+    return None
+
+@app.route('/')
+def index():
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT c.id, c.case_no, c.case_name, c.applicant_name, 
+                       c.respondent_name, c.preserve_amount, c.court_name,
+                       c.guarantee_type, c.status, c.created_at,
+                       p.property_type
+                FROM cases c
+                LEFT JOIN property_clues p ON c.id = p.case_id
+                ORDER BY c.created_at DESC
+            """)
+            cases = []
+            for row in cur.fetchall():
+                cases.append({
+                    'id': row[0], 'case_no': row[1], 'case_name': row[2],
+                    'applicant_name': row[3], 'respondent_name': row[4],
+                    'preserve_amount': row[5], 'court_name': row[6],
+                    'guarantee_type': row[7], 'status': row[8],
+                    'created_at': row[9], 'property_type': row[10]
+                })
+    finally:
+        conn.close()
+    return render_template('index.html', cases=cases, has_openpyxl=HAS_OPENPYXL)
+
+
+@app.route('/case/<int:case_id>')
+def view_case(case_id):
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM cases WHERE id = %s", (case_id,))
+            case_row = cur.fetchone()
+            if not case_row:
+                flash('案件不存在', 'error')
+                return redirect(url_for('index'))
+            cur.execute("SHOW COLUMNS FROM cases")
+            case_cols = [c[0] for c in cur.fetchall()]
+            case = dict(zip(case_cols, case_row))
+            
+            cur.execute("SELECT * FROM property_clues WHERE case_id = %s", (case_id,))
+            prop_rows = cur.fetchall()
+            cur.execute("SHOW COLUMNS FROM property_clues")
+            prop_cols = [c[0] for c in cur.fetchall()]
+            properties = [dict(zip(prop_cols, row)) for row in prop_rows]
+            
+            cur.execute("SELECT * FROM case_files WHERE case_id = %s", (case_id,))
+            file_rows = cur.fetchall()
+            cur.execute("SHOW COLUMNS FROM case_files")
+            file_cols = [c[0] for c in cur.fetchall()]
+            files = [dict(zip(file_cols, row)) for row in file_rows]
+    finally:
+        conn.close()
+    return render_template('case_detail.html', case=case, properties=properties, files=files)
+
+
+@app.route('/case/add', methods=['GET', 'POST'])
+def add_case():
+    if request.method == 'POST':
+        case_no = request.form.get('case_no', '').strip()
+        if not case_no:
+            flash('案件编号不能为空', 'error')
+            return redirect(url_for('add_case'))
+        
+        conn = get_db()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM cases WHERE case_no = %s", (case_no,))
+                if cur.fetchone():
+                    flash('案件编号已存在', 'error')
+                    return redirect(url_for('add_case'))
+                
+                sql = """INSERT INTO cases (
+                    case_no, case_name, preserve_type, case_reason,
+                    applicant_name, applicant_id, applicant_phone, applicant_address,
+                    applicant_type, applicant_cert_type, applicant_cert_no, applicant_uscc, applicant_gender,
+                    applicant_country, applicant_birth, applicant_age, applicant_nation, applicant_tel,
+                    applicant_reg_address, applicant_reg_country,
+                    applicant_nature, applicant_legal_person, applicant_legal_title,
+                    respondent_name, respondent_id, respondent_phone, respondent_address,
+                    respondent_type, respondent_cert_type, respondent_uscc, respondent_gender,
+                    respondent_country, respondent_birth, respondent_age, respondent_nation,
+                    respondent_tel, respondent_residence,
+                    respondent_nature, respondent_legal_person, respondent_legal_title,
+                    respondent_reg_address, respondent_reg_country,
+                    preserve_amount, court_name, guarantee_type, guarantee_value,
+                    guarantor_name, pledge_property_type, mortgage_property_type,
+                    guarantee_object, guarantee_remark
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+                
+                values = (
+                    case_no, request.form.get('case_name', ''),
+                    request.form.get('preserve_type', '诉讼保全'),
+                    request.form.get('case_reason', ''),
+                    request.form.get('applicant_name', ''),
+                    request.form.get('applicant_id', ''),
+                    request.form.get('applicant_phone', ''),
+                    request.form.get('applicant_address', ''),
+                    request.form.get('applicant_type', '自然人'),
+                    request.form.get('applicant_cert_type', '身份证'),
+                    request.form.get('applicant_cert_no', ''),
+                    request.form.get('applicant_uscc', ''),
+                    request.form.get('applicant_gender', ''),
+                    request.form.get('applicant_country', '中国'),
+                    request.form.get('applicant_birth', ''),
+                    request.form.get('applicant_age', ''),
+                    request.form.get('applicant_nation', '汉族'),
+                    request.form.get('applicant_tel', ''),
+                    request.form.get('applicant_reg_address', ''),
+                    request.form.get('applicant_reg_country', '中国'),
+                    request.form.get('applicant_nature', ''),
+                    request.form.get('applicant_legal_person', ''),
+                    request.form.get('applicant_legal_title', ''),
+                    request.form.get('respondent_name', ''),
+                    request.form.get('respondent_id', ''),
+                    request.form.get('respondent_phone', ''),
+                    request.form.get('respondent_address', ''),
+                    request.form.get('respondent_type', '自然人'),
+                    request.form.get('respondent_cert_type', '身份证'),
+                    request.form.get('respondent_uscc', ''),
+                    request.form.get('respondent_gender', ''),
+                    request.form.get('respondent_country', '中国'),
+                    request.form.get('respondent_birth', ''),
+                    request.form.get('respondent_age', '0'),
+                    request.form.get('respondent_nation', '汉族'),
+                    request.form.get('respondent_tel', ''),
+                    request.form.get('respondent_residence', ''),
+                    request.form.get('respondent_nature', ''),
+                    request.form.get('respondent_legal_person', ''),
+                    request.form.get('respondent_legal_title', ''),
+                    request.form.get('respondent_reg_address', ''),
+                    request.form.get('respondent_reg_country', '中国'),
+                    request.form.get('preserve_amount', '0'),
+                    request.form.get('court_name', ''),
+                    request.form.get('guarantee_type', '提供保证人'),
+                    request.form.get('guarantee_value', '0'),
+                    request.form.get('guarantor_name', ''),
+                    request.form.get('pledge_property_type', ''),
+                    request.form.get('mortgage_property_type', ''),
+                    request.form.get('guarantee_object', ''),
+                    request.form.get('guarantee_remark', '')
+                )
+                
+                cur.execute(sql, values)
+                case_id = cur.lastrowid
+                conn.commit()
+                flash(f'案件 {case_no} 创建成功', 'success')
+                return redirect(url_for('view_case', case_id=case_id))
+        except Exception as e:
+            conn.rollback()
+            flash(f'创建失败: {str(e)}', 'error')
+            return redirect(url_for('add_case'))
+        finally:
+            conn.close()
+    
+    return render_template('case_form.html',
+                          property_types=PROPERTY_TYPES,
+                          guarantee_types=GUARANTEE_TYPES,
+                          applicant_types=APPLICANT_TYPES,
+                          respondent_types=RESPONDENT_TYPES)
+
+@app.route('/case/<int:case_id>/property/add', methods=['POST'])
+def add_property(case_id):
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            sql = """INSERT INTO property_clues (
+                case_id, property_type, owner, bank_name, bank_account,
+                amount, currency, property_value, property_province,
+                property_location, property_cert_no, property_detail_location,
+                vehicle_brand_model, vehicle_plate_no, vehicle_location, vehicle_type,
+                stock_reg_location, stock_company_name, stock_ratio,
+                stock_name, stock_code, stock_quantity,
+                fund_name, fund_quantity,
+                bond_name, bond_face_value,
+                equipment_name,
+                property_city, property_area, property_area_unit,
+                description
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+            values = (
+                case_id, request.form.get('property_type', '存款'),
+                request.form.get('owner', ''), request.form.get('bank_name', ''),
+                request.form.get('bank_account', ''), request.form.get('amount', '0'),
+                request.form.get('currency', 'CNY'), request.form.get('property_value', '0'),
+                request.form.get('property_province', ''), request.form.get('property_location', ''),
+                request.form.get('property_cert_no', ''), request.form.get('property_detail_location', ''),
+                request.form.get('vehicle_brand_model', ''), request.form.get('vehicle_plate_no', ''),
+                request.form.get('vehicle_location', ''), request.form.get('vehicle_type', ''),
+                request.form.get('stock_reg_location', ''), request.form.get('stock_company_name', ''),
+                request.form.get('stock_ratio') or None,
+                request.form.get('stock_name', ''), request.form.get('stock_code', ''),
+                request.form.get('stock_quantity', '0'),
+                request.form.get('fund_name', ''), request.form.get('fund_quantity', '0'),
+                request.form.get('bond_name', ''), request.form.get('bond_face_value', '0'),
+                request.form.get('equipment_name', ''),
+                request.form.get('property_city', ''), request.form.get('property_area', '0'),
+                request.form.get('property_area_unit', '平方米'),
+                request.form.get('description', '')
+            )
+            cur.execute(sql, values)
+            conn.commit()
+            flash('财产线索添加成功', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'添加失败: {str(e)}', 'error')
+    finally:
+        conn.close()
+    return redirect(url_for('view_case', case_id=case_id))
+
+
+@app.route('/case/<int:case_id>/property/<int:property_id>/edit', methods=['GET', 'POST'])
+def edit_property(case_id, property_id):
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            if request.method == 'GET':
+                cur.execute("SELECT * FROM property_clues WHERE id = %s AND case_id = %s", (property_id, case_id))
+                row = cur.fetchone()
+                if not row:
+                    flash('Property not found', 'error')
+                    return redirect(url_for('view_case', case_id=case_id))
+                cur.execute("SHOW COLUMNS FROM property_clues")
+                cols = [c[0] for c in cur.fetchall()]
+                prop = dict(zip(cols, row))
+                return render_template('property_edit.html', prop=prop, case_id=case_id, property_id=property_id)
+            sql = """UPDATE property_clues SET
+                property_type = %s, owner = %s, bank_name = %s, bank_account = %s,
+                amount = %s, currency = %s, property_value = %s, property_province = %s,
+                property_location = %s, property_cert_no = %s, property_detail_location = %s,
+                vehicle_brand_model = %s, vehicle_plate_no = %s, vehicle_location = %s, vehicle_type = %s,
+                stock_reg_location = %s, stock_company_name = %s, stock_ratio = %s,
+                stock_name = %s, stock_code = %s, stock_quantity = %s,
+                fund_name = %s, fund_quantity = %s,
+                bond_name = %s, bond_face_value = %s,
+                equipment_name = %s,
+                property_city = %s, property_area = %s, property_area_unit = %s,
+                description = %s
+            WHERE id = %s AND case_id = %s"""
+            values = (
+                request.form.get('property_type', '存款'),
+                request.form.get('owner', ''),
+                request.form.get('bank_name', ''),
+                request.form.get('bank_account', ''),
+                request.form.get('amount', '0'),
+                request.form.get('currency', 'CNY'),
+                request.form.get('property_value', '0'),
+                request.form.get('property_province', ''),
+                request.form.get('property_location', ''),
+                request.form.get('property_cert_no', ''),
+                request.form.get('property_detail_location', ''),
+                request.form.get('vehicle_brand_model', ''),
+                request.form.get('vehicle_plate_no', ''),
+                request.form.get('vehicle_location', ''),
+                request.form.get('vehicle_type', ''),
+                request.form.get('stock_reg_location', ''),
+                request.form.get('stock_company_name', ''),
+                request.form.get('stock_ratio') or None,
+                request.form.get('stock_name', ''),
+                request.form.get('stock_code', ''),
+                request.form.get('stock_quantity', '0'),
+                request.form.get('fund_name', ''),
+                request.form.get('fund_quantity', '0'),
+                request.form.get('bond_name', ''),
+                request.form.get('bond_face_value', '0'),
+                request.form.get('equipment_name', ''),
+                request.form.get('property_city', ''),
+                request.form.get('property_area', '0'),
+                request.form.get('property_area_unit', '平方米'),
+                request.form.get('description', ''),
+                property_id, case_id
+            )
+            cur.execute(sql, values)
+            conn.commit()
+            flash('财产线索更新成功', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'更新失败: {str(e)}', 'error')
+    finally:
+        conn.close()
+    return redirect(url_for('view_case', case_id=case_id))
+
+
+@app.route('/case/<int:case_id>/property/<int:property_id>/delete', methods=['POST'])
+def delete_property(case_id, property_id):
+    """删除财产线索"""
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM property_clues WHERE id = %s AND case_id = %s", (property_id, case_id))
+            conn.commit()
+            flash('财产线索删除成功', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'删除失败: {str(e)}', 'error')
+    finally:
+        conn.close()
+    return redirect(url_for('view_case', case_id=case_id))
+
+@app.route('/case/<int:case_id>/files/upload', methods=['POST'])
+def upload_files(case_id):
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT case_no FROM cases WHERE id = %s", (case_id,))
+            row = cur.fetchone()
+            if not row:
+                flash('案件不存在', 'error')
+                return redirect(url_for('index'))
+            case_no = row[0]
+            
+            uploaded_count = 0
+            for category in FILE_CATEGORIES:
+                if category in request.files:
+                    files = request.files.getlist(category)
+                    for file in files:
+                        if file and file.filename:
+                            filepath = save_uploaded_file(case_no, category, file)
+                            if filepath:
+                                cur.execute("""
+                                    INSERT INTO case_files (case_id, file_category, file_name, file_path, upload_status)
+                                    VALUES (%s, %s, %s, %s, 1)
+                                """, (case_id, category, file.filename, filepath))
+                                uploaded_count += 1
+            conn.commit()
+            flash(f'成功上传 {uploaded_count} 个文件', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'上传失败: {str(e)}', 'error')
+    finally:
+        conn.close()
+    return redirect(url_for('view_case', case_id=case_id))
+
+@app.route('/case/<int:case_id>/edit', methods=['GET', 'POST'])
+def edit_case(case_id):
+    """编辑案件"""
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM cases WHERE id = %s", (case_id,))
+            case_row = cur.fetchone()
+            if not case_row:
+                flash('案件不存在', 'error')
+                return redirect(url_for('index'))
+            
+            cur.execute("SHOW COLUMNS FROM cases")
+            case_cols = [c[0] for c in cur.fetchall()]
+            case = dict(zip(case_cols, case_row))
+            
+            if request.method == 'POST':
+                sql = """UPDATE cases SET
+                    case_name = %s, preserve_type = %s, case_reason = %s,
+                    applicant_name = %s, applicant_id = %s, applicant_phone = %s, applicant_address = %s,
+                    applicant_type = %s, applicant_cert_type = %s, applicant_cert_no = %s, applicant_uscc = %s, applicant_gender = %s,
+                    applicant_country = %s, applicant_birth = %s, applicant_nation = %s, applicant_tel = %s,
+                    applicant_reg_address = %s, applicant_reg_country = %s,
+                    applicant_nature = %s, applicant_legal_person = %s, applicant_legal_title = %s,
+                    respondent_name = %s, respondent_id = %s, respondent_phone = %s, respondent_address = %s,
+                    respondent_type = %s, respondent_cert_type = %s, respondent_uscc = %s, respondent_gender = %s,
+                    respondent_country = %s, respondent_birth = %s, respondent_age = %s, respondent_nation = %s,
+                    respondent_tel = %s, respondent_residence = %s,
+                    respondent_nature = %s, respondent_legal_person = %s, respondent_legal_title = %s,
+                    respondent_reg_address = %s, respondent_reg_country = %s,
+                    preserve_amount = %s, court_name = %s, guarantee_type = %s, guarantee_value = %s,
+                    guarantor_name = %s, pledge_property_type = %s, mortgage_property_type = %s,
+                    delivery_address = %s, contact_name = %s, contact_phone = %s,
+                    guarantee_property_type = %s, guarantee_object = %s,
+                    guarantee_remark = %s,
+                    updated_at = NOW()
+                WHERE id = %s"""
+                
+                values = (
+                    request.form.get('case_name', ''),
+                    request.form.get('preserve_type', '诉讼保全'),
+                    request.form.get('case_reason', ''),
+                    request.form.get('applicant_name', ''),
+                    request.form.get('applicant_id', ''),
+                    request.form.get('applicant_phone', ''),
+                    request.form.get('applicant_address', ''),
+                    request.form.get('applicant_type', '自然人'),
+                    request.form.get('applicant_cert_type', '身份证'),
+                    request.form.get('applicant_cert_no', ''),
+                    request.form.get('applicant_uscc', ''),
+                    request.form.get('applicant_gender', ''),
+                    request.form.get('applicant_country', '中国'),
+                    request.form.get('applicant_birth', ''),
+                    request.form.get('applicant_age', ''),
+                    request.form.get('applicant_nation', '汉族'),
+                    request.form.get('applicant_tel', ''),
+                    request.form.get('applicant_reg_address', ''),
+                    request.form.get('applicant_reg_country', '中国'),
+                    request.form.get('applicant_nature', ''),
+                    request.form.get('applicant_legal_person', ''),
+                    request.form.get('applicant_legal_title', ''),
+                    request.form.get('respondent_name', ''),
+                    request.form.get('respondent_id', ''),
+                    request.form.get('respondent_phone', ''),
+                    request.form.get('respondent_address', ''),
+                    request.form.get('respondent_type', '自然人'),
+                    request.form.get('respondent_cert_type', '身份证'),
+                    request.form.get('respondent_uscc', ''),
+                    request.form.get('respondent_gender', ''),
+                    request.form.get('respondent_country', '中国'),
+                    request.form.get('respondent_birth', ''),
+                    request.form.get('respondent_age', '0'),
+                    request.form.get('respondent_nation', '汉族'),
+                    request.form.get('respondent_tel', ''),
+                    request.form.get('respondent_residence', ''),
+                    request.form.get('respondent_nature', ''),
+                    request.form.get('respondent_legal_person', ''),
+                    request.form.get('respondent_legal_title', ''),
+                    request.form.get('respondent_reg_address', ''),
+                    request.form.get('respondent_reg_country', '中国'),
+                    request.form.get('preserve_amount', '0'),
+                    request.form.get('court_name', ''),
+                    request.form.get('guarantee_type', '提供保证人'),
+                    request.form.get('guarantee_value', '0'),
+                    request.form.get('guarantor_name', ''),
+                    request.form.get('pledge_property_type', ''),
+                    request.form.get('mortgage_property_type', ''),
+                    request.form.get('delivery_address', ''),
+                    request.form.get('contact_name', ''),
+                    request.form.get('contact_phone', ''),
+                    request.form.get('guarantee_property_type', ''),
+                    request.form.get('guarantee_object', ''),
+                    request.form.get('guarantee_remark', ''),
+                    case_id
+                )
+                
+                cur.execute(sql, values)
+                conn.commit()
+                flash('案件更新成功', 'success')
+                return redirect(url_for('view_case', case_id=case_id))
+    except Exception as e:
+        conn.rollback()
+        flash(f'更新失败: {str(e)}', 'error')
+    finally:
+        conn.close()
+    
+    return render_template('case_edit.html', case=case,
+                          property_types=PROPERTY_TYPES,
+                          guarantee_types=GUARANTEE_TYPES,
+                          applicant_types=APPLICANT_TYPES,
+                          respondent_types=RESPONDENT_TYPES)
+
+@app.route('/case/<int:case_id>/delete', methods=['POST'])
+def delete_case(case_id):
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT case_no FROM cases WHERE id = %s", (case_id,))
+            row = cur.fetchone()
+            if row:
+                case_no = row[0]
+                cur.execute("DELETE FROM case_files WHERE case_id = %s", (case_id,))
+                cur.execute("DELETE FROM property_clues WHERE case_id = %s", (case_id,))
+                cur.execute("DELETE FROM agents WHERE case_id = %s", (case_id,))
+                cur.execute("DELETE FROM cases WHERE id = %s", (case_id,))
+                conn.commit()
+                case_dir = os.path.join(UPLOAD_BASE, case_no)
+                if os.path.exists(case_dir):
+                    shutil.rmtree(case_dir)
+                flash('案件删除成功', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'删除失败: {str(e)}', 'error')
+    finally:
+        conn.close()
+    return redirect(url_for('index'))
+
+
+@app.route('/api/cases')
+def api_cases():
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT c.id, c.case_no, c.case_name, c.applicant_name, 
+                       c.respondent_name, c.preserve_amount, c.court_name,
+                       c.guarantee_type, c.status, c.created_at
+                FROM cases c
+                ORDER BY c.created_at DESC
+            """)
+            cases = []
+            for row in cur.fetchall():
+                cases.append({
+                    'id': row[0], 'case_no': row[1], 'case_name': row[2],
+                    'applicant_name': row[3], 'respondent_name': row[4],
+                    'preserve_amount': str(row[5]), 'court_name': row[6],
+                    'guarantee_type': row[7], 'status': row[8],
+                    'created_at': str(row[9])
+                })
+            return jsonify({'success': True, 'data': cases})
+    finally:
+        conn.close()
+
+# ==================== Excel模板下载与批量导入 ====================
+
+@app.route('/template/download')
+def download_template():
+    """下载Excel模板"""
+    if not HAS_OPENPYXL:
+        flash('请先安装 openpyxl: pip install openpyxl', 'error')
+        return redirect(url_for('index'))
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "案件模板"
+    
+    # 样式
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1a237e", end_color="1a237e", fill_type="solid")
+    required_fill = PatternFill(start_color="ffebee", end_color="ffebee", fill_type="solid")
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    
+    # 标题行
+    headers = [col[1] + ('*' if col[2] else '') for col in EXCEL_TEMPLATE_COLUMNS]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = thin_border
+    
+    # 示例数据行
+    example = [
+        '保全2026001', '借款合同纠纷', '诉讼保全', '借款合同纠纷',
+        '上海市静安区人民法院', '1000000',
+        '自然人', '张三', '110101199001011234', '男', '13800138000', '北京市朝阳区',
+        '自然人', '李四', '110101199002022345', '男', '13900139000', '北京市海淀区', '北京市海淀区',
+        '存款', '李四', '中国工商银行', '6222021234567890123', '1000000', 'CNY', '1000000', '北京',
+        '提供保证人', '100000', '王五', '存款'
+    ]
+    ws.append(example)
+    for cell in ws[2]:
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal='left', vertical='center')
+    
+    # 必填列标红
+    for idx, col_def in enumerate(EXCEL_TEMPLATE_COLUMNS, 1):
+        if col_def[2]:
+            for row in range(1, ws.max_row + 1):
+                ws.cell(row=row, column=idx).fill = required_fill
+    
+    # 列宽
+    col_widths = [16, 20, 12, 16, 26, 12, 12, 16, 22, 8, 16, 24, 12, 16, 22, 8, 16, 24, 24, 12, 14, 18, 24, 12, 8, 12, 14, 12, 12, 14, 12]
+    for i, width in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+    
+    # 冻结首行
+    ws.freeze_panes = 'A2'
+    
+    # 添加说明sheet
+    ws_help = wb.create_sheet("填写说明")
+    help_data = [
+        ["字段", "说明", "可选值/示例"],
+        ["案件编号", "唯一标识，如：保全2026001", ""],
+        ["保全类别", "", "诉讼保全 / 诉前保全"],
+        ["申请人类型", "", "自然人 / 法人 / 非法人组织"],
+        ["被申请人类型", "", "自然人 / 法人 / 非法人组织"],
+        ["财产类型", "", "存款 / 房产 / 股票 / 股权 / 交通运输工具 / 机器设备 / 货币现金 / 其他"],
+        ["币种", "", "CNY / USD / EUR"],
+        ["担保方式", "", "提供保证人 / 设定抵押 / 设定质押 / 交纳保证金"],
+        ["申请人性别", "", "男 / 女"],
+        ["被申请人性别", "", "男 / 女"],
+        ["财产所在省份", "", "北京 / 上海 / 广东 / 浙江 ..."],
+    ]
+    for row in help_data:
+        ws_help.append(row)
+    for cell in ws_help[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+    ws_help.column_dimensions['A'].width = 18
+    ws_help.column_dimensions['B'].width = 40
+    ws_help.column_dimensions['C'].width = 50
+    
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='案件批量导入模板.xlsx'
+    )
+
+
+@app.route('/template/upload', methods=['POST'])
+def upload_template():
+    """上传Excel批量创建案件"""
+    if not HAS_OPENPYXL:
+        return jsonify({'success': False, 'error': '请先安装 openpyxl: pip install openpyxl'})
+    
+    if 'excel_file' not in request.files:
+        flash('请选择Excel文件', 'error')
+        return redirect(url_for('index'))
+    
+    file = request.files['excel_file']
+    if not file or not file.filename:
+        flash('请选择Excel文件', 'error')
+        return redirect(url_for('index'))
+    
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        flash('请上传 .xlsx 或 .xls 格式的Excel文件', 'error')
+        return redirect(url_for('index'))
+    
+    try:
+        wb = openpyxl.load_workbook(file, data_only=True)
+        ws = wb.active
+        
+        # 读取表头
+        headers = []
+        for cell in ws[1]:
+            headers.append(cell.value)
+        
+        # 建立字段映射
+        field_map = {}
+        for idx, header in enumerate(headers):
+            if not header:
+                continue
+            header_clean = str(header).replace('*', '').strip()
+            for col_def in EXCEL_TEMPLATE_COLUMNS:
+                if col_def[1] == header_clean:
+                    field_map[idx] = col_def[0]
+                    break
+        
+        if not field_map:
+            flash('无法识别Excel表头，请使用系统提供的模板', 'error')
+            return redirect(url_for('index'))
+        
+        conn = get_db()
+        created_cases = []
+        failed_cases = []
+        
+        try:
+            with conn.cursor() as cur:
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
+                    # 跳过空行
+                    if not row or all(v is None or str(v).strip() == '' for v in row):
+                        continue
+                    
+                    row_data = {}
+                    for idx, val in enumerate(row):
+                        if idx in field_map and val is not None:
+                            row_data[field_map[idx]] = str(val).strip()
+                    
+                    case_no = row_data.get('case_no', '')
+                    if not case_no:
+                        failed_cases.append(f'第{row_idx}行: 案件编号为空')
+                        continue
+                    
+                    # 检查案件编号是否已存在
+                    cur.execute("SELECT id FROM cases WHERE case_no = %s", (case_no,))
+                    if cur.fetchone():
+                        failed_cases.append(f'{case_no}: 案件编号已存在')
+                        continue
+                    
+                    # 必填校验
+                    required_fields = ['case_name', 'applicant_name', 'applicant_cert_no', 
+                                       'respondent_name', 'respondent_cert_no', 'court_name', 
+                                       'preserve_amount', 'property_type']
+                    missing = [f for f in required_fields if not row_data.get(f)]
+                    if missing:
+                        failed_cases.append(f'{case_no}: 缺少必填字段 {", ".join(missing)}')
+                        continue
+                    
+                    # 插入cases表
+                    sql_cases = """INSERT INTO cases (
+                        case_no, case_name, preserve_type, case_reason,
+                        applicant_name, applicant_id, applicant_phone, applicant_address,
+                        applicant_type, applicant_cert_type, applicant_cert_no, applicant_uscc, applicant_gender,
+                        applicant_country, applicant_birth, applicant_age, applicant_nation, applicant_tel,
+                        applicant_reg_address, applicant_reg_country,
+                        applicant_nature, applicant_legal_person, applicant_legal_title,
+                        respondent_name, respondent_id, respondent_phone, respondent_address,
+                        respondent_type, respondent_cert_type, respondent_uscc, respondent_gender,
+                        respondent_country, respondent_birth, respondent_age, respondent_nation,
+                        respondent_tel, respondent_residence,
+                        respondent_nature, respondent_legal_person, respondent_legal_title,
+                        respondent_reg_address, respondent_reg_country,
+                        preserve_amount, court_name, guarantee_type, guarantee_value,
+                        guarantor_name, pledge_property_type, mortgage_property_type,
+                        guarantee_object, guarantee_remark
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+                    
+                    values_cases = (
+                        case_no, row_data.get('case_name', ''),
+                        row_data.get('preserve_type', '诉讼保全'),
+                        row_data.get('case_reason', ''),
+                        row_data.get('applicant_name', ''),
+                        '',  # applicant_id
+                        row_data.get('applicant_phone', ''),
+                        row_data.get('applicant_address', ''),
+                        row_data.get('applicant_type', '自然人'),
+                        '身份证',
+                        row_data.get('applicant_cert_no', ''),
+                        '',  # applicant_uscc
+                        row_data.get('applicant_gender', ''),
+                        '中国', '', '', '汉族', '', '', '中国',
+                        '', '', '',
+                        row_data.get('respondent_name', ''),
+                        '',  # respondent_id
+                        row_data.get('respondent_phone', ''),
+                        row_data.get('respondent_address', ''),
+                        row_data.get('respondent_type', '自然人'),
+                        '身份证',
+                        '',  # respondent_uscc
+                        row_data.get('respondent_gender', ''),
+                        '中国', '', '0', '汉族',
+                        row_data.get('respondent_tel', ''),
+                        row_data.get('respondent_residence', ''),
+                        '', '', '', '', '中国',
+                        row_data.get('preserve_amount', '0'),
+                        row_data.get('court_name', ''),
+                        row_data.get('guarantee_type', '提供保证人'),
+                        row_data.get('guarantee_value', '0'),
+                        row_data.get('guarantor_name', ''),
+                        '', '',
+                        row_data.get('guarantee_object', ''),
+                        ''
+                    )
+                    
+                    cur.execute(sql_cases, values_cases)
+                    case_id = cur.lastrowid
+                    
+                    # 插入property_clues表
+                    sql_prop = """INSERT INTO property_clues (
+                        case_id, property_type, owner, bank_name, bank_account,
+                        amount, currency, property_value, property_province,
+                        description
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+                    
+                    values_prop = (
+                        case_id,
+                        row_data.get('property_type', '存款'),
+                        row_data.get('property_owner', row_data.get('respondent_name', '')),
+                        row_data.get('bank_name', ''),
+                        row_data.get('bank_account', ''),
+                        row_data.get('amount', '0') or row_data.get('preserve_amount', '0'),
+                        row_data.get('currency', 'CNY'),
+                        row_data.get('property_value', '0') or row_data.get('preserve_amount', '0'),
+                        row_data.get('property_province', ''),
+                        ''
+                    )
+                    
+                    cur.execute(sql_prop, values_prop)
+                    created_cases.append(case_no)
+                
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            flash(f'批量导入失败: {str(e)}', 'error')
+            return redirect(url_for('index'))
+        finally:
+            conn.close()
+        
+        msg_parts = []
+        if created_cases:
+            msg_parts.append(f'成功创建 {len(created_cases)} 个案件')
+        if failed_cases:
+            msg_parts.append(f'失败 {len(failed_cases)} 个')
+            for f in failed_cases[:5]:
+                flash(f, 'error')
+        
+        flash(' / '.join(msg_parts), 'success' if created_cases else 'error')
+        
+    except Exception as e:
+        flash(f'Excel解析失败: {str(e)}', 'error')
+    
+    return redirect(url_for('index'))
+
+
+if __name__ == '__main__':
+    os.makedirs(UPLOAD_BASE, exist_ok=True)
+    print("启动后台管理系统...")
+    print("访问地址: http://localhost:5000")
+    app.run(host='0.0.0.0', port=5000, debug=True)
