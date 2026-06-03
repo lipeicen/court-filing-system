@@ -22,7 +22,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(r'C:\court-auto-filing\admin_app.log', encoding='utf-8'),
+        logging.FileHandler(r'/app/admin_app.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -67,7 +67,7 @@ DB_CONFIG = {
     'charset': 'utf8mb4'
 }
 
-UPLOAD_BASE = r'C:\court-auto-filing\uploads'
+UPLOAD_BASE = r'/app/uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'}
 PROPERTY_TYPES = [
     '存款', '房产', '土地使用权', '集体土地所有权', '森林、林木所有权',
@@ -140,7 +140,7 @@ def save_uploaded_file(case_no, category, file, applicant_name=None, respondent_
         
         # 格式：案号-被申请人姓名-类别.扩展名
         name = respondent_name or '未知'
-        base = re.sub(r'[\\/:*?"<>|]', '_', f"{case_no}-{name}-{category}").strip(' .')
+        base = re.sub(r'[///:*?"<>|]', '_', f"{case_no}-{name}-{category}").strip(' .')
         new_filename = f"{base}{ext}"
         filepath = os.path.join(case_dir, new_filename)
         if os.path.exists(filepath):
@@ -1505,7 +1505,7 @@ def auto_filing_start():
         auto_filing_status['failed'] = []
         try:
             proc = subprocess.Popen(
-                cwd=r'C:\court-auto-filing',
+                cwd=r'/app',
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -1527,11 +1527,11 @@ def auto_filing_start():
             auto_filing_status['current_case'] = None
             try:
                 import json
-                with open(r'C:\\court-auto-filing\\auto_filing_progress.json', 'r', encoding='utf-8') as f:
+                with open(r'/app//auto_filing_progress.json', 'r', encoding='utf-8') as f:
                     progress = json.load(f)
                 progress['running'] = False
                 progress['current_case'] = None
-                with open(r'C:\\court-auto-filing\\auto_filing_progress.json', 'w', encoding='utf-8') as f:
+                with open(r'/app//auto_filing_progress.json', 'w', encoding='utf-8') as f:
                     json.dump(progress, f, ensure_ascii=False)
             except Exception:
                 pass
@@ -1554,8 +1554,8 @@ def auto_filing_selected():
     case_nos = request.form.getlist('case_nos')
     app.logger.info('自动立案接收案件数量: %s, 案件列表: %s' % (len(case_nos), case_nos))
     # 写入标记文件方便查看
-    debug_info = "时间: %s\n案件数量: %s\n案件列表: %s\n" % (datetime.now(), len(case_nos), case_nos)
-    with open(r'C:\court-auto-filing\auto_filing_debug.txt', 'w', encoding='utf-8') as f:
+    debug_info = "时间: %s/n案件数量: %s/n案件列表: %s/n" % (datetime.now(), len(case_nos), case_nos)
+    with open(r'/app/auto_filing_debug.txt', 'w', encoding='utf-8') as f:
         f.write(debug_info)
     if not case_nos:
         flash('未选择任何案件', 'warning')
@@ -1579,7 +1579,7 @@ def auto_filing_selected():
             try:
                 result = subprocess.run(
                     ['python', 'final_auto_upload_db_v3.py', case_no],
-                    cwd=r'C:\court-auto-filing',
+                    cwd=r'/app',
                     capture_output=True,
                     text=True,
                     timeout=600
@@ -1630,7 +1630,7 @@ def auto_filing_selected():
 def auto_filing_stop():
     """停止自动立案"""
     import os
-    stop_file = r'C:\\court-auto-filing\\auto_filing_stop.flag'
+    stop_file = r'/app//auto_filing_stop.flag'
     with open(stop_file, 'w', encoding='utf-8') as f:
         f.write('stop')
     flash('已发送停止指令，当前案件处理完后将停止', 'warning')
@@ -1640,7 +1640,7 @@ def auto_filing_stop():
 def read_filing_progress():
     import json
     try:
-        with open(r'C:\\court-auto-filing\\auto_filing_progress.json', 'r', encoding='utf-8') as f:
+        with open(r'/app//auto_filing_progress.json', 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception:
         return auto_filing_status

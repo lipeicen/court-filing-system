@@ -18,8 +18,11 @@ def load_system_config():
     """从数据库加载系统配置(登录账号,密码,用户类型)"""
     try:
         conn = pymysql.connect(
-            host="localhost", user="root", password="lijiayu123",
-            database="court_filing", charset="utf8mb4"
+            host=os.environ.get('DB_HOST', 'mysql'),
+            user=os.environ.get('DB_USER', 'court_user'),
+            password=os.environ.get('DB_PASSWORD', 'court_pass'),
+            database=os.environ.get('DB_NAME', 'court_filing'),
+            charset='utf8mb4'
         )
         cursor = conn.cursor()
         cursor.execute("SELECT config_key, config_value FROM system_config")
@@ -203,7 +206,7 @@ def auto_login(page, max_retries=3):
     print("=" * 50)
     
     for attempt in range(max_retries):
-        print(f"\n第 {attempt + 1} 次尝试...")
+        print(f"/n第 {attempt + 1} 次尝试...")
         
         # 进入登录页
         page.goto("https://zxfw.court.gov.cn/zxfw/#/pagesGrxx/pc/login/index")
@@ -229,7 +232,7 @@ def auto_login(page, max_retries=3):
         
         # 输入密码
         print("输入密码...")
-        pwd_input = page.locator("input[type=\"password\"]")
+        pwd_input = page.locator("input[type=/"password/"]")
         pwd_input.click()
         pwd_input.fill(login_password)
         time.sleep(0.5)
@@ -262,11 +265,11 @@ def auto_login(page, max_retries=3):
             time.sleep(2)
             continue
     
-    print(f"\n登录失败，已达到最大重试次数 ({max_retries})")
+    print(f"/n登录失败，已达到最大重试次数 ({max_retries})")
     return False
 def create_preservation(page):
     """创建保全申请 - 数据库版本"""
-    print("\n" + "=" * 50)
+    print("/n" + "=" * 50)
     print("开始创建保全申请")
     print(f"保全类别: {CASE_DATA.get('preserve_category', '诉前保全')}")
     print("=" * 50)
@@ -339,7 +342,7 @@ def create_preservation(page):
     
     # 截图确认页面状态
     try:
-        page1.screenshot(path=r'C:\court-auto-filing\debug_after_create.png')
+        page1.screenshot(path=r'/app/debug_after_create.png')
         print("  截图保存: debug_after_create.png")
     except:
         print("  截图失败")
@@ -350,7 +353,7 @@ def create_preservation(page):
 
 def add_applicant(page1):
     """添加申请人 - 数据驱动版本"""
-    print("\n" + "=" * 50)
+    print("/n" + "=" * 50)
     print("添加申请人")
     print("=" * 50)
     
@@ -366,7 +369,7 @@ def add_applicant(page1):
     time.sleep(3)  # 增加等待时间让弹窗加载
     
     # 截图确认弹窗状态
-    page1.screenshot(path=r'C:\court-auto-filing\debug_applicant_popup.png')
+    page1.screenshot(path=r'/app/debug_applicant_popup.png')
     print("  截图保存: debug_applicant_popup.png")
     
     if applicant_type == '自然人':
@@ -634,7 +637,7 @@ def add_applicant(page1):
 
 def add_respondent(page1):
     """添加被申请人 - 数据驱动版本"""
-    print("\n" + "=" * 50)
+    print("/n" + "=" * 50)
     print("添加被申请人")
     print("=" * 50)
     
@@ -836,7 +839,7 @@ def add_respondent(page1):
             time.sleep(0.5)
         
         # 截图确认填写状态
-        page1.screenshot(path=r'C:\court-auto-filing\debug_respondent_before_save.png')
+        page1.screenshot(path=r'/app/debug_respondent_before_save.png')
         print("  截图保存: debug_respondent_before_save.png")
     
     elif respondent_type == '非法人组织':
@@ -984,7 +987,7 @@ def add_respondent(page1):
 
 def add_property(page1):
     """添加财产线索 - 数据驱动版本"""
-    print("\n" + "=" * 50)
+    print("/n" + "=" * 50)
     print("添加财产线索")
     print("=" * 50)
     
@@ -1196,7 +1199,7 @@ def add_property(page1):
                 except Exception as e:
                     print(f"  地址输入失败: {e}")
                     # 备用JS方法
-                    page1.evaluate(f"""() => {{ const items = document.querySelectorAll('.el-form-item'); for(let item of items) {{ if(item.textContent.includes('房产坐落位置')) {{ const inputs = item.querySelectorAll('input[type=\"text\"]'); for(let input of inputs) {{ if(!input.readOnly) {{ input.focus(); input.value = '{detail}'; input.dispatchEvent(new Event('input', {{bubbles:true}})); input.blur(); return; }} }} }} }} }}""")
+                    page1.evaluate(f"""() => {{ const items = document.querySelectorAll('.el-form-item'); for(let item of items) {{ if(item.textContent.includes('房产坐落位置')) {{ const inputs = item.querySelectorAll('input[type=/"text/"]'); for(let input of inputs) {{ if(!input.readOnly) {{ input.focus(); input.value = '{detail}'; input.dispatchEvent(new Event('input', {{bubbles:true}})); input.blur(); return; }} }} }} }} }}""")
             time.sleep(0.5)
         
         # 输入房产证号
@@ -1592,7 +1595,7 @@ def add_property(page1):
 
 def add_guarantee(page1):
     """添加担保信息 - 数据驱动版本"""
-    print("\n" + "=" * 50)
+    print("/n" + "=" * 50)
     print("添加担保信息")
     print("=" * 50)
     
@@ -2046,7 +2049,7 @@ def add_guarantee(page1):
         if table_data == 0:
             print("  警告: 表格为空，保存可能未生效")
             # 截图查看状态
-            page1.screenshot(path=r'C:\court-auto-filing\debug_guarantee_empty.png')
+            page1.screenshot(path=r'/app/debug_guarantee_empty.png')
     except:
         pass
     
@@ -2059,7 +2062,7 @@ def add_guarantee(page1):
     
     # 截图确认页面状态
     try:
-        page1.screenshot(path=r'C:\court-auto-filing\debug_after_guarantee.png')
+        page1.screenshot(path=r'/app/debug_after_guarantee.png')
     except:
         print("  截图失败")
     
@@ -2087,7 +2090,7 @@ def add_guarantee(page1):
 
 def upload_files(page1):
     """上传材料文件 - 从数据库读取文件路径"""
-    print("\n" + "=" * 50)
+    print("/n" + "=" * 50)
     print("上传材料")
     print("=" * 50)
     
@@ -2108,7 +2111,7 @@ def upload_files(page1):
         pass
     
     # 先截图确认当前页面
-    page1.screenshot(path=r'C:\court-auto-filing\debug_before_next.png')
+    page1.screenshot(path=r'/app/debug_before_next.png')
     
     # 点击"下一步"按钮
     clicked = False
@@ -2173,7 +2176,7 @@ def upload_files(page1):
         pass
     
     # 截图确认是否进入材料上传页面
-    page1.screenshot(path=r'C:\court-auto-filing\debug_after_next.png')
+    page1.screenshot(path=r'/app/debug_after_next.png')
     
     # 从数据库读取文件列表
     import pymysql
@@ -2227,7 +2230,7 @@ def upload_files(page1):
         return
     
     # 截图确认页面状态
-    page1.screenshot(path=r'C:\court-auto-filing\debug_material_page.png')
+    page1.screenshot(path=r'/app/debug_material_page.png')
     print("  截图保存: debug_material_page.png")
     
     # 查找所有文件input
@@ -2362,14 +2365,14 @@ def main():
             print("默认案件加载失败")
             return
     
-    print("\n" + "=" * 60)
+    print("/n" + "=" * 60)
     print("法院自动立案系统 - 数据库版本")
     print("=" * 60)
     print(f"案件: {CASE_DATA['case_name']} ({CASE_DATA['case_no']})")
     print(f"申请人: {CASE_DATA['applicant_name']}")
     print(f"被申请人: {CASE_DATA['respondent_name']}")
     print(f"保全金额: {CASE_DATA['preserve_amount']}")
-    print("=" * 60 + "\n")
+    print("=" * 60 + "/n")
     
     # 启动浏览器并执行流程
     with sync_playwright() as p:
@@ -2405,7 +2408,7 @@ def main():
         # 上传材料
         upload_files(page1)
         
-        print("\n" + "=" * 60)
+        print("/n" + "=" * 60)
         print("保全申请流程完成!")
         print("=" * 60)
         
