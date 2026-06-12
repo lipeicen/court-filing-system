@@ -223,6 +223,86 @@ def register():
     
     return render_template('register.html')
 
+
+
+@app.route('/my-filings')
+@login_required
+def my_filings():
+    """我的立案 - 显示从法院同步的立案状态（按类别分标签页）"""
+    conn = pymysql.connect(
+        host="localhost", user="root", password="lijiayu123",
+        database="court_filing_status", charset="utf8mb4"
+    )
+    try:
+        with conn.cursor() as cur:
+            table_map = {
+                '审判': 'filing_status_trial',
+                '执行': 'filing_status_execution',
+                '保全': 'filing_status_preservation',
+                '调解': 'filing_status_mediation',
+                '破产': 'filing_status_bankruptcy',
+                '信访': 'filing_status_petition'
+            }
+            category_counts = {}
+            total_count = 0
+            for cat, table in table_map.items():
+                try:
+                    cur.execute(f"SELECT COUNT(*) FROM {table}")
+                    count = cur.fetchone()[0]
+                    category_counts[cat] = count
+                    total_count += count
+                except:
+                    category_counts[cat] = 0
+
+            categories = {
+                '审判': 'filings_trial',
+                '执行': 'filings_execution',
+                '保全': 'filings_preservation',
+                '调解': 'filings_mediation',
+                '破产': 'filings_bankruptcy',
+                '信访': 'filings_petition'
+            }
+
+            filings_by_category = {}
+            for cat, var_name in categories.items():
+                table = table_map[cat]
+                # 只取最新同步的500条（约50页），按sync_time正序
+                cur.execute(f"""
+                    SELECT case_no, case_name, court_name, status, status_code,
+                           review_opinion, apply_date, sync_time, '{cat}' as case_category, is_new
+                    FROM {table}
+                    WHERE sync_time >= (
+                        SELECT sync_time FROM (
+                            SELECT DISTINCT sync_time 
+                            FROM {table} 
+                            ORDER BY sync_time DESC 
+                            LIMIT 50
+                        ) as t 
+                        ORDER BY sync_time ASC 
+                        LIMIT 1
+                    )
+                    ORDER BY sync_time ASC
+                    LIMIT 500
+                """)
+                filings = []
+                for row in cur.fetchall():
+                    filings.append({
+                        "case_no": row[0], "case_name": row[1], "court_name": row[2],
+                        "status": row[3], "status_code": row[4],
+                        "review_opinion": row[5], "apply_date": row[6],
+                        "sync_time": row[7], "case_category": row[8],
+                        "is_new": row[9]
+                    })
+                filings_by_category[var_name] = filings
+    finally:
+        conn.close()
+
+    return render_template("my_filings.html",
+                         total_count=total_count,
+                         category_counts=category_counts,
+                         sync_url='/sync/filing-status',
+                         **filings_by_category)
+
 @app.route('/logout')
 def logout():
     session.pop('logged_in', None)
@@ -246,7 +326,7 @@ def index():
                     SELECT c.id, c.case_no, c.case_name, c.applicant_name,
                            c.respondent_name, c.preserve_amount, c.court_name,
                            c.guarantee_type, c.status, c.created_at,
-                           p.property_type
+                           p.property_type, c.filing_status
                     FROM cases c
                     LEFT JOIN property_clues p ON c.id = p.case_id
                     ORDER BY c.created_at DESC
@@ -256,7 +336,7 @@ def index():
                     SELECT c.id, c.case_no, c.case_name, c.applicant_name,
                            c.respondent_name, c.preserve_amount, c.court_name,
                            c.guarantee_type, c.status, c.created_at,
-                           p.property_type
+                           p.property_type, c.filing_status
                     FROM cases c
                     LEFT JOIN property_clues p ON c.id = p.case_id
                     WHERE c.created_by = %s
@@ -269,7 +349,8 @@ def index():
                     "applicant_name": row[3], "respondent_name": row[4],
                     "preserve_amount": row[5], "court_name": row[6],
                     "guarantee_type": row[7], "status": row[8],
-                    "created_at": row[9], "property_type": row[10]
+                    "created_at": row[9], "property_type": row[10],
+                    "filing_status": row[11]
                 })
             # 统计已自动立案数 (status=1)
             cur.execute("SELECT COUNT(*) FROM cases WHERE status = 1")
@@ -1659,8 +1740,78 @@ def api_auto_filing_status():
     return jsonify(read_filing_progress())
 
 
+@app.route('/sync/filing-status', methods=['POST'])
+@login_required
+def sync_filing_status_api():
+    """同步立案状态(后台异步执行)"""
+    import subprocess, json, os, time
+    try:
+        # 使用后台进程执行同步，避免HTTP超时
+        log_file = r'C:\court-auto-filing\sync_bg.log'
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.write(f"同步任务启动于 {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        
+        subprocess.Popen(
+            [r'C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe', r'C:\court-auto-filing\sync_filing_status.py'],
+            cwd=r'C:\court-auto-filing',
+            stdout=open(log_file, 'a', encoding='utf-8'),
+            stderr=subprocess.STDOUT,
+            creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
+        )
+        
+        return json.dumps({'success': True, 'message': '同步任务已启动，请在几分钟后刷新页面查看结果'}), 200, {'Content-Type': 'application/json'}
+    except Exception as e:
+        return json.dumps({'success': False, 'message': str(e)}), 500, {'Content-Type': 'application/json'}
+
+
+
+@app.route('/sync/clear-new', methods=['POST'])
+@login_required
+def clear_new_mark():
+    """清除新增标记"""
+    import pymysql
+    try:
+        conn = pymysql.connect(**STATUS_DB_CONFIG)
+        with conn.cursor() as cur:
+            tables = ['filing_status_trial', 'filing_status_execution', 'filing_status_preservation',
+                      'filing_status_mediation', 'filing_status_bankruptcy', 'filing_status_petition']
+            for table in tables:
+                try:
+                    cur.execute(f"UPDATE {table} SET is_new = 0")
+                except:
+                    pass
+            conn.commit()
+        conn.close()
+        return json.dumps({'success': True, 'message': '已清除新增标记'}), 200, {'Content-Type': 'application/json'}
+    except Exception as e:
+        return json.dumps({'success': False, 'message': str(e)}), 500, {'Content-Type': 'application/json'}
+
+
+
 if __name__ == '__main__':
     os.makedirs(UPLOAD_BASE, exist_ok=True)
     print("启动后台管理系统...")
     print("访问地址: http://localhost:5000")
     app.run(host='0.0.0.0', port=5000, debug=False)
+
+
+
+@app.route('/sync/status/history')
+@login_required
+def sync_status_history():
+    """查看同步历史"""
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT sync_time, total_cases, updated_cases, error_msg 
+                FROM court_filing_status.sync_log 
+                ORDER BY sync_time ASC LIMIT 50
+            """)
+            logs = cur.fetchall()
+        return render_template('sync_history.html', logs=logs)
+    except Exception as e:
+        flash('查询失败: ' + str(e), 'error')
+        return redirect(url_for('index'))
+    finally:
+        conn.close()

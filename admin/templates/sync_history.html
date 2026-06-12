@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>同步历史 - 法院保全案件管理系统</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; margin: 0; padding: 24px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        h2 { margin: 0 0 20px 0; color: #1a237e; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: #fafafa; padding: 12px 16px; text-align: left; font-weight: 600; color: #555; border-bottom: 1px solid #e8e8e8; }
+        td { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+        tr:hover { background: #fafafa; }
+        .success { color: #2e7d32; }
+        .error { color: #c62828; }
+        .back { display: inline-block; margin-bottom: 16px; color: #1a237e; text-decoration: none; }
+        .back:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back">← 返回案件列表</a>
+        <h2>立案状态同步历史</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>同步时间</th>
+                    <th>总案件数</th>
+                    <th>更新数</th>
+                    <th>状态</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log[0] }}</td>
+                    <td>{{ log[1] }}</td>
+                    <td>{{ log[2] }}</td>
+                    <td class="{% if log[3] %}error{% else %}success{% endif %}">
+                        {% if log[3] %}失败: {{ log[3][:100] }}{% else %}成功{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="text-align:center;color:#999;padding:40px;">暂无同步记录</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
