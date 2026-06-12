@@ -1,0 +1,263 @@
+
+{% macro render_table(filings) %}
+    {% if filings %}
+        <table>
+            <thead>
+                <tr>
+                    <th>案件名称</th>
+                    <th>法院</th>
+                    <th>状态</th>
+                    <th>审核意见</th>
+                    <th>申请日期</th>
+                    <th>同步时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in filings %}
+                <tr>
+                    <td>
+                        {% if f.is_new %}
+                        <span class="new-badge">新</span>
+                        {% endif %}
+                        {{ f.case_name }}
+                    </td>
+                    <td>{{ f.court_name }}</td>
+                    <td>
+                        {% if f.status == "审核不通过" %}
+                            <span class="badge badge-red">审核不通过</span>
+                        {% elif f.status == "待补充材料" %}
+                            <span class="badge badge-orange">待补充材料</span>
+                        {% elif f.status == "已立案" %}
+                            <span class="badge badge-green">已立案</span>
+                        {% elif f.status == "待审核" %}
+                            <span class="badge badge-blue">待审核</span>
+                        {% else %}
+                            <span class="badge badge-gray">{{ f.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="opinion" title="{{ f.review_opinion or '' }}">{{ f.review_opinion or "-" }}</td>
+                    <td>{{ f.apply_date or "-" }}</td>
+                    <td>{{ f.sync_time.strftime("%Y-%m-%d %H:%M") if f.sync_time else "-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty">暂无数据</div>
+    {% endif %}
+{% endmacro %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>我的立案 - 法院保全案件管理系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; }
+        .sidebar { position: fixed; left: 0; top: 0; width: 200px; height: 100vh; background: #2c3e50; color: white; padding: 20px 0; }
+        .sidebar h2 { text-align: center; padding: 0 20px 20px; border-bottom: 1px solid #34495e; font-size: 16px; }
+        .sidebar ul { list-style: none; padding: 10px 0; }
+        .sidebar li a { display: block; padding: 12px 20px; color: #ecf0f1; text-decoration: none; font-size: 14px; }
+        .sidebar li a:hover { background: #34495e; }
+        .sidebar li a.active { background: #3498db; }
+        .main { margin-left: 200px; padding: 20px; }
+        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .header h1 { font-size: 20px; color: #2c3e50; }
+        
+        /* Tabs */
+        .tabs { display: flex; background: white; border-radius: 8px 8px 0 0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 0; }
+        .tab { flex: 1; padding: 15px 20px; text-align: center; cursor: pointer; border: none; background: #f8f9fa; font-size: 14px; color: #666; transition: all 0.2s; }
+        .tab:hover { background: #e9ecef; }
+        .tab.active { background: #3498db; color: white; font-weight: 500; }
+        .tab .count { display: block; font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+        
+        .tab-content { display: none; background: white; padding: 20px; border-radius: 0 0 8px 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .tab-content.active { display: block; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ecf0f1; font-size: 13px; }
+        th { background: #f8f9fa; font-weight: 600; color: #2c3e50; }
+        tr:hover { background: #f8f9fa; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .badge-red { background: #fee; color: #c33; }
+        .badge-green { background: #efe; color: #3c3; }
+        .badge-orange { background: #fff3e0; color: #e65100; }
+        .badge-blue { background: #e3f2fd; color: #1565c0; }
+        .badge-gray { background: #f5f5f5; color: #666; }
+        .opinion { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .empty { text-align: center; padding: 60px; color: #999; }
+        .new-badge {
+        display: inline-block;
+        background: #ff4757;
+        color: white;
+        font-size: 12px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-right: 5px;
+        font-weight: bold;
+    }
+</style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>🏛️ 法院保全系统</h2>
+        <ul>
+            <li><a href="/">📋 案件列表</a></li>
+            <li><a href="/case/add">➕ 新增案件</a></li>
+            <li><a href="/my-filings" class="active">📊 我的立案</a></li>
+            <li><a href="/system-config">⚙️ 系统配置</a></li>
+            <li><a href="/auto-filing/status">📈 立案进度</a></li>
+            <li><a href="/template/download">📥 下载模板</a></li>
+        </ul>
+    </div>
+    
+    <div class="main">
+        <div class="header">
+            <h1>我的立案</h1>
+            <p style="color: #7f8c8d; margin-top: 8px;">从法院系统同步的立案状态 | 共 {{ total_count }} 条</p>
+        </div>
+        
+        <div class="tabs">
+            <button class="sync-btn" onclick="syncData()">
+                🔄 同步立案状态
+            </button>
+            <button class="clear-btn" onclick="clearNewMark()">
+                ✓ 清除新增标记
+            </button>
+            <button class="tab active" onclick="showTab('trial')">
+                <span class="count">{{ category_counts.get('审判', 0) }}</span>
+                审判
+            </button>
+            <button class="tab" onclick="showTab('execution')">
+                <span class="count">{{ category_counts.get('执行', 0) }}</span>
+                执行
+            </button>
+            <button class="tab" onclick="showTab('preservation')">
+                <span class="count">{{ category_counts.get('保全', 0) }}</span>
+                保全
+            </button>
+            <button class="tab" onclick="showTab('mediation')">
+                <span class="count">{{ category_counts.get('调解', 0) }}</span>
+                调解
+            </button>
+            <button class="tab" onclick="showTab('bankruptcy')">
+                <span class="count">{{ category_counts.get('破产', 0) }}</span>
+                破产
+            </button>
+            <button class="tab" onclick="showTab('petition')">
+                <span class="count">{{ category_counts.get('信访', 0) }}</span>
+                信访
+            </button>
+        </div>
+        
+        <!-- 审判 -->
+        <div id="trial" class="tab-content active">
+            {{ render_table(filings_trial) }}
+        </div>
+        
+        <!-- 执行 -->
+        <div id="execution" class="tab-content">
+            {{ render_table(filings_execution) }}
+        </div>
+        
+        <!-- 保全 -->
+        <div id="preservation" class="tab-content">
+            {{ render_table(filings_preservation) }}
+        </div>
+        
+        <!-- 调解 -->
+        <div id="mediation" class="tab-content">
+            {{ render_table(filings_mediation) }}
+        </div>
+        
+        <!-- 破产 -->
+        <div id="bankruptcy" class="tab-content">
+            {{ render_table(filings_bankruptcy) }}
+        </div>
+        
+        <!-- 信访 -->
+        <div id="petition" class="tab-content">
+            {{ render_table(filings_petition) }}
+        </div>
+    </div>
+    
+    <script>
+        function clearNewMark() {
+            if (!confirm('确定要清除所有新增标记吗？')) return;
+            
+            fetch('/sync/clear-new', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                alert(data.message || data.error || '操作完成');
+                if (data.success) location.reload();
+            })
+            .catch(err => {
+                alert('清除失败: ' + err.message);
+            });
+        }
+
+        function clearNewMark() {
+            if (!confirm('确定要清除所有新增标记吗？')) return;
+            
+            fetch('/sync/clear-new', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                alert(data.message || data.error || '操作完成');
+                if (data.success) location.reload();
+            })
+            .catch(err => {
+                alert('清除失败: ' + err.message);
+            });
+        }
+
+        function syncData() {
+            const btn = document.querySelector('.sync-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ 同步中...';
+            
+            fetch('{{ sync_url }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                alert('同步完成！' + JSON.stringify(data));
+                location.reload();
+            })
+            .catch(error => {
+                alert('同步失败: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = '🔄 同步立案状态';
+            });
+        }
+        
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            event.target.closest('.tab').classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+    </script>
+</body>
+</html>
