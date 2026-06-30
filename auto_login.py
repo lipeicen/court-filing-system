@@ -1,101 +1,23 @@
 import asyncio
 import os
+from utils.ocr_captcha import ocr_solver
 import sys
-import requests
-import time
-import base64
 
 sys.path.insert(0, r"C:\court-auto-filing")
 
 from core.browser_controller import CourtBrowser
 from config import settings
 
-class CaptchaSolver:
-    """2Captcha 验证码识别"""
+"""自动登录 - 使用 OCR"""
+async def main():
     
-    def __init__(self, api_key):
-        self.api_key = api_key
-        self.base_url = "http://2captcha.com"
-    
-    def solve_image(self, image_path):
-        """识别图片验证码"""
-        print(f"[2Captcha] 上传验证码图片...")
-        
-        with open(image_path, 'rb') as f:
-            files = {'file': f}
-            data = {
-                'key': self.api_key,
-                'method': 'post',
-                'json': 1
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/in.php",
-                files=files,
-                data=data,
-                timeout=30
-            )
-            
-            result = response.json()
-            
-            if result.get('status') == 1:
-                captcha_id = result.get('request')
-                print(f"[2Captcha] 验证码ID: {captcha_id}")
-                
-                # 等待识别结果
-                for i in range(30):
-                    time.sleep(5)
-                    
-                    res = requests.get(
-                        f"{self.base_url}/res.php",
-                        params={
-                            'key': self.api_key,
-                            'action': 'get',
-                            'id': captcha_id,
-                            'json': 1
-                        },
-                        timeout=30
-                    )
-                    
-                    result = res.json()
-                    
-                    if result.get('status') == 1:
-                        code = result.get('request')
-                        print(f"[2Captcha] 识别结果: {code}")
-                        return code
-                    elif result.get('request') == 'CAPCHA_NOT_READY':
-                        print(f"[2Captcha] 识别中... ({i+1}/30)")
-                    else:
-                        print(f"[2Captcha] 错误: {result}")
-                        return None
-                
-                print("[2Captcha] 识别超时")
-                return None
-            else:
-                print(f"[2Captcha] 上传失败: {result}")
-                return None
-
-async def auto_login():
-    """自动登录 - 使用 2Captcha"""
-    
-    # 检查 API Key
-    api_key = os.getenv('2CAPTCHA_API_KEY', '')
-    if not api_key:
-        print("错误: 未配置 2CAPTCHA_API_KEY")
-        print("请在 .env 文件中设置:")
-        print("2CAPTCHA_API_KEY=your_api_key_here")
-        print("\n或者使用手动登录:")
-        print("  python manual_login.py")
-        return
-    
-    solver = CaptchaSolver(api_key)
     browser = CourtBrowser()
     
     try:
         await browser.launch()
         
         print("=" * 50)
-        print("法院自动立案系统 - 自动登录 (2Captcha)")
+        print("法院自动立案系统 - 自动登录 (OCR)")
         print("=" * 50)
         
         # 访问登录页
@@ -135,8 +57,8 @@ async def auto_login():
                 await captcha_img.screenshot(path=captcha_path)
                 print(f"[4/5] 验证码已保存: {captcha_path}")
                 
-                # 使用 2Captcha 识别
-                captcha_code = solver.solve_image(captcha_path)
+                # 使用本地 OCR 识别
+                captcha_code = ocr_solver.recognize(captcha_path)
                 
                 if captcha_code:
                     await inputs[2].fill(captcha_code)
