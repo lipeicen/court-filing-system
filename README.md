@@ -28,15 +28,13 @@ COURT_PASSWORD=你的密码
 ### 4. 登录方式
 
 #### 方式一：自动登录（推荐）
-使用 2Captcha 自动识别验证码
+使用本地 OCR 自动识别验证码（ddddocr，无需第三方 API）
 
-1. 注册 2Captcha: https://2captcha.com/
-2. 充值并获取 API Key
-3. 在 `.env` 中配置：
+1. 确保已安装依赖：
+```bash
+pip install -r requirements.txt
 ```
-2CAPTCHA_API_KEY=你的API密钥
-```
-4. 运行自动登录：
+2. 运行自动登录：
 ```bash
 python auto_login.py
 ```
@@ -107,8 +105,8 @@ court-auto-filing/
 
 ### Q: 验证码识别失败？
 A: 
-- 检查 2Captcha API Key 是否正确
-- 检查账户余额是否充足
+- 确认已安装 `ddddocr`：`pip install ddddocr`
+- 检查验证码图片是否清晰（见 `screenshots/captcha_auto.png`）
 - 或者使用手动登录方式
 
 ### Q: 登录后会话过期？
