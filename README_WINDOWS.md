@@ -63,7 +63,16 @@ run_sync.bat
 
 或创建 Windows 计划任务定时执行 `sync_filing_status.py`。
 
-### 6. 自动立案
+### 6. 自动登录
+
+使用本地 OCR 自动识别验证码（ddddocr，无需第三方 API）：
+
+```cmd
+venv\Scripts\activate.bat
+python auto_login.py
+```
+
+### 7. 自动立案
 
 ```cmd
 venv\Scripts\activate.bat
