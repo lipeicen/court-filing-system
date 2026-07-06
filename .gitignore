@@ -14,6 +14,7 @@ uploads/*
 *.xls
 *.zip
 *.csv
+!templates/案件批量导入模板.xlsx
 
 # 日志
 *.log
