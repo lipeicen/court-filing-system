@@ -2390,7 +2390,7 @@ def main():
     
     # 启动浏览器并执行流程
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=False)
         context = browser.new_context()
         page = context.new_page()
         
