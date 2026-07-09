@@ -37,3 +37,25 @@ Thumbs.db
 
 # Playwright
 screenshots/
+
+# 运行时临时文件
+.user_index
+auth_state.json
+auto_filing_stop.flag
+auto_filing_debug.txt
+cases_new_added.txt
+cases_unique.txt
+check_*.py
+check_*.db
+check_*.json
+
+# 调试截图
+debug_*.png
+login_*.png
+captcha_*.png
+
+# 其他临时文件
+*.tmp
+*.bak
+run_log*.txt
+token.txt

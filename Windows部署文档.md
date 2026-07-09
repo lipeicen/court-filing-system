@@ -296,6 +296,68 @@ nssm restart CourtFiling
 ```
 
 ---
+## 十四、账号隔离的立案状态同步（v2.2 新增）
 
-文档版本：v2.1
-最后更新：2026-06-30
+### 功能说明
+
+系统支持多个法院账号（`system_users` 表）。同步立案状态时：
+
+- 每个法院账号的案件会标记对应的 `account` 字段
+- 后台 **我的立案** 页面按当前登录用户配置的法院账号过滤，只能看到本账号的案件
+- **清除新增标记** 也只清除当前账号的案件
+
+### 相关数据表
+
+以下表均已增加 `account` 字段，用于存储同步来源账号：
+
+- `filing_status_trial`
+- `filing_status_execution`
+- `filing_status_preservation`
+- `filing_status_mediation`
+- `filing_status_bankruptcy`
+- `filing_status_petition`
+
+### 配置方法
+
+1. 登录后台管理
+2. 进入 **系统配置**
+3. 填写当前登录用户对应的法院登录账号、密码、身份
+4. 保存后，该用户登录 **我的立案** 时只显示此法院账号下的案件
+
+### 同步方式
+
+#### 后台手动同步
+
+在 **我的立案** 页面点击 **同步立案状态** 按钮，系统会启动 `sync_filing_status.py` 同步所有配置的法院账号，但列表只展示当前账号的数据。
+
+#### 命令行全量同步
+
+```bash
+cd C:\court-auto-filing
+venv\Scripts\activate.bat
+python sync_filing_status.py --full
+```
+
+### 旧数据迁移
+
+升级前已同步的数据 `account` 字段为空，不会显示在 **我的立案** 列表中。执行一次同步后，新数据会带上 `account`。
+
+如需让旧数据也按账号显示，可在 MySQL 中手动更新：
+
+```sql
+USE court_filing_status;
+
+UPDATE filing_status_trial SET account = '13149930995' WHERE account IS NULL;
+UPDATE filing_status_execution SET account = '13149930995' WHERE account IS NULL;
+UPDATE filing_status_preservation SET account = '13149930995' WHERE account IS NULL;
+UPDATE filing_status_mediation SET account = '13149930995' WHERE account IS NULL;
+UPDATE filing_status_bankruptcy SET account = '13149930995' WHERE account IS NULL;
+UPDATE filing_status_petition SET account = '13149930995' WHERE account IS NULL;
+```
+
+将 `13149930995` 替换为实际的法院账号。
+
+---
+
+文档版本：v2.2
+最后更新：2026-07-09

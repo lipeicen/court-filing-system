@@ -231,7 +231,20 @@ def register():
 @app.route('/my-filings')
 @login_required
 def my_filings():
-    """我的立案 - 显示从法院同步的立案状态（按类别分标签页）"""
+    """我的立案 - 显示从法院同步的立案状态（按类别分标签页，按当前登录用户的法院账号过滤）"""
+    current_user = session.get('username', '')
+    # 从system_config读取当前用户配置的法院账号
+    main_conn = get_db()
+    court_account = ''
+    try:
+        with main_conn.cursor() as cur:
+            cur.execute("SELECT config_value FROM system_config WHERE config_key = %s", (f'login_username_{current_user}',))
+            row = cur.fetchone()
+            if row:
+                court_account = row[0] or ''
+    finally:
+        main_conn.close()
+
     conn = pymysql.connect(
         host="localhost", user="root", password="lijiayu123",
         database="court_filing_status", charset="utf8mb4"
@@ -250,7 +263,10 @@ def my_filings():
             total_count = 0
             for cat, table in table_map.items():
                 try:
-                    cur.execute(f"SELECT COUNT(*) FROM {table}")
+                    if court_account:
+                        cur.execute(f"SELECT COUNT(*) FROM {table} WHERE account = %s", (court_account,))
+                    else:
+                        cur.execute(f"SELECT COUNT(*) FROM {table}")
                     count = cur.fetchone()[0]
                     category_counts[cat] = count
                     total_count += count
@@ -269,24 +285,44 @@ def my_filings():
             filings_by_category = {}
             for cat, var_name in categories.items():
                 table = table_map[cat]
-                # 只取最新同步的500条（约50页），按sync_time正序
-                cur.execute(f"""
-                    SELECT case_no, case_name, court_name, status, status_code,
-                           review_opinion, apply_date, sync_time, '{cat}' as case_category, is_new
-                    FROM {table}
-                    WHERE sync_time >= (
-                        SELECT sync_time FROM (
-                            SELECT DISTINCT sync_time 
-                            FROM {table} 
-                            ORDER BY sync_time DESC 
-                            LIMIT 50
-                        ) as t 
-                        ORDER BY sync_time ASC 
-                        LIMIT 1
-                    )
-                    ORDER BY sync_time ASC
-                    LIMIT 500
-                """)
+                if court_account:
+                    cur.execute(f"""
+                        SELECT case_no, case_name, court_name, status, status_code,
+                               review_opinion, apply_date, sync_time, '{cat}' as case_category, is_new
+                        FROM {table}
+                        WHERE account = %s
+                          AND sync_time >= (
+                            SELECT sync_time FROM (
+                                SELECT DISTINCT sync_time
+                                FROM {table}
+                                WHERE account = %s
+                                ORDER BY sync_time DESC
+                                LIMIT 50
+                            ) as t
+                            ORDER BY sync_time ASC
+                            LIMIT 1
+                        )
+                        ORDER BY sync_time ASC
+                        LIMIT 500
+                    """, (court_account, court_account))
+                else:
+                    cur.execute(f"""
+                        SELECT case_no, case_name, court_name, status, status_code,
+                               review_opinion, apply_date, sync_time, '{cat}' as case_category, is_new
+                        FROM {table}
+                        WHERE sync_time >= (
+                            SELECT sync_time FROM (
+                                SELECT DISTINCT sync_time
+                                FROM {table}
+                                ORDER BY sync_time DESC
+                                LIMIT 50
+                            ) as t
+                            ORDER BY sync_time ASC
+                            LIMIT 1
+                        )
+                        ORDER BY sync_time ASC
+                        LIMIT 500
+                    """)
                 filings = []
                 for row in cur.fetchall():
                     filings.append({
@@ -304,6 +340,7 @@ def my_filings():
                          total_count=total_count,
                          category_counts=category_counts,
                          sync_url='/sync/filing-status',
+                         current_account=court_account,
                          **filings_by_category)
 
 @app.route('/logout')
@@ -1796,8 +1833,20 @@ def sync_filing_status_api():
 @app.route('/sync/clear-new', methods=['POST'])
 @login_required
 def clear_new_mark():
-    """清除新增标记"""
+    """清除新增标记（仅清除当前用户法院账号的）"""
     import pymysql
+    current_user = session.get('username', '')
+    main_conn = get_db()
+    court_account = ''
+    try:
+        with main_conn.cursor() as cur:
+            cur.execute("SELECT config_value FROM system_config WHERE config_key = %s", (f'login_username_{current_user}',))
+            row = cur.fetchone()
+            if row:
+                court_account = row[0] or ''
+    finally:
+        main_conn.close()
+
     try:
         conn = pymysql.connect(**STATUS_DB_CONFIG)
         with conn.cursor() as cur:
@@ -1805,12 +1854,16 @@ def clear_new_mark():
                       'filing_status_mediation', 'filing_status_bankruptcy', 'filing_status_petition']
             for table in tables:
                 try:
-                    cur.execute(f"UPDATE {table} SET is_new = 0")
+                    if court_account:
+                        cur.execute(f"UPDATE {table} SET is_new = 0 WHERE account = %s", (court_account,))
+                    else:
+                        cur.execute(f"UPDATE {table} SET is_new = 0")
                 except:
                     pass
             conn.commit()
         conn.close()
-        return json.dumps({'success': True, 'message': '已清除新增标记'}), 200, {'Content-Type': 'application/json'}
+        msg = f'已清除账号 {court_account} 的新增标记' if court_account else '已清除新增标记'
+        return json.dumps({'success': True, 'message': msg}), 200, {'Content-Type': 'application/json'}
     except Exception as e:
         return json.dumps({'success': False, 'message': str(e)}), 500, {'Content-Type': 'application/json'}
 

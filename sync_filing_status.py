@@ -258,6 +258,7 @@ def init_status_db():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS filing_status (
                     id INT AUTO_INCREMENT PRIMARY KEY,
+                    account VARCHAR(50) NULL DEFAULT NULL COMMENT '同步账号',
                     case_no VARCHAR(50) NOT NULL COMMENT '案件编号',
                     case_name VARCHAR(200) COMMENT '案件名称',
                     court_name VARCHAR(100) COMMENT '法院名称',
@@ -287,7 +288,7 @@ def init_status_db():
     finally:
         conn.close()
 
-def save_status(case_no, case_name, court_name, status, status_code, review_opinion, apply_date, raw_data, case_category='审判'):
+def save_status(case_no, case_name, court_name, status, status_code, review_opinion, apply_date, raw_data, case_category='审判', account=None):
     conn = pymysql.connect(**STATUS_DB_CONFIG)
     try:
         with conn.cursor() as cur:
@@ -303,15 +304,15 @@ def save_status(case_no, case_name, court_name, status, status_code, review_opin
             table_name = table_map.get(case_category, 'filing_status')
             
             # 先查询案件是否存在
-            cur.execute(f"SELECT id FROM {table_name} WHERE case_no = %s", (case_no,))
+            cur.execute(f"SELECT id FROM {table_name} WHERE case_no = %s AND (account = %s OR account IS NULL)", (case_no, account))
             exists = cur.fetchone() is not None
             
             is_new_val = 0 if exists else 1
             
             cur.execute(f"""
                 INSERT INTO {table_name}
-                (case_no, case_name, court_name, status, status_code, review_opinion, apply_date, raw_data, sync_time, is_new)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+                (case_no, case_name, court_name, status, status_code, review_opinion, apply_date, raw_data, sync_time, is_new, account)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s)
                 ON DUPLICATE KEY UPDATE
                 case_name = VALUES(case_name),
                 court_name = VALUES(court_name),
@@ -321,8 +322,9 @@ def save_status(case_no, case_name, court_name, status, status_code, review_opin
                 apply_date = VALUES(apply_date),
                 raw_data = VALUES(raw_data),
                 sync_time = NOW(),
-                is_new = IF(is_new = 1, 1, VALUES(is_new))
-            """, (case_no, case_name, court_name, status, status_code, review_opinion, apply_date, json.dumps(raw_data, ensure_ascii=False), is_new_val))
+                is_new = IF(is_new = 1, 1, VALUES(is_new)),
+                account = VALUES(account)
+            """, (case_no, case_name, court_name, status, status_code, review_opinion, apply_date, json.dumps(raw_data, ensure_ascii=False), is_new_val, account))
         conn.commit()
     finally:
         conn.close()
@@ -412,7 +414,7 @@ def parse_cases_from_html(html):
     
     return cases
 
-def sync_category(page, category, full_sync=False, batch_start=1, skip_verify_once=False):
+def sync_category(page, category, full_sync=False, batch_start=1, skip_verify_once=False, account=None):
     """同步单个类别的案件(支持翻页)"""
     # full_sync=True: 全量抓取所有页
     # full_sync=False: 增量抓取,只抓前30页(最近数据)
@@ -558,7 +560,8 @@ def sync_category(page, category, full_sync=False, batch_start=1, skip_verify_on
                     review_opinion=case.get('opinion', ''),
                     apply_date=apply_date if apply_date else None,
                     raw_data=case,
-                    case_category=category
+                    case_category=category,
+                    account=account
                 )
                 
                 total += 1
@@ -709,10 +712,10 @@ def sync_filing_status(full_sync=False):
                 grand_total = 0
                 for category in categories:
                     if category == '审判' and full_sync:
-                        count = sync_category(page, category, full_sync=full_sync)
+                        count = sync_category(page, category, full_sync=full_sync, account=username)
                         grand_total += count
                     else:
-                        count = sync_category(page, category, full_sync=full_sync)
+                        count = sync_category(page, category, full_sync=full_sync, account=username)
                         grand_total += count
                 
                 print(f"账号 {username} 同步完成: {grand_total} 条")
