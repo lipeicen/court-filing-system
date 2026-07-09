@@ -14,8 +14,10 @@ import sys
 CASE_DATA = {}
 
 
-def load_system_config():
-    """从数据库加载系统配置(登录账号,密码,用户类型)"""
+def load_system_config(created_by=''):
+    """从数据库加载系统配置(登录账号,密码,用户类型)
+    如果传入 created_by，则优先读取该用户对应的法院账号配置
+    """
     try:
         conn = pymysql.connect(
             host="localhost", user="root", password="lijiayu123",
@@ -26,6 +28,18 @@ def load_system_config():
         config = {row[0]: row[1] for row in cursor.fetchall()}
         cursor.close()
         conn.close()
+        
+        # 按 created_by 提取对应的法院账号配置
+        if created_by:
+            username = config.get(f'login_username_{created_by}', '')
+            password = config.get(f'login_password_{created_by}', '')
+            user_type = config.get(f'login_user_type_{created_by}', '个人用户')
+            if username and password:
+                config['login_username'] = username
+                config['login_password'] = password
+                config['login_user_type'] = user_type
+                print(f"使用案件创建者账号配置: {created_by} -> {username}")
+        
         return config
     except Exception as e:
         print(f"加载系统配置失败: {e}")
@@ -141,6 +155,7 @@ def load_case_data(case_no):
     print(f"  被申请人: {case.get('respondent_name', '')}")
     print(f"  保全金额: {case.get('preserve_amount', '')}")
     print(f"  财产类型: {case.get('property_type', '')}")
+    print(f"  创建者: {case.get('created_by', '')}")
     return True
 
 def solve_captcha(page):
@@ -196,8 +211,10 @@ def solve_captcha(page):
     return result
 
 
-def auto_login(page, max_retries=3):
-    """自动登录 - 带重试机制"""
+def auto_login(page, created_by='', max_retries=3):
+    """自动登录 - 带重试机制
+    created_by: 案件创建者账号，用于读取对应的法院系统登录配置
+    """
     print("=" * 50)
     print("开始登录")
     print("=" * 50)
@@ -219,7 +236,7 @@ def auto_login(page, max_retries=3):
         phone_input = page.locator("uni-input").filter(has_text="请输入手机号/居民身份证号").get_by_role("textbox")
         phone_input.click()
         # 从数据库加载登录配置
-        sys_config = load_system_config()
+        sys_config = load_system_config(created_by)
         login_username = sys_config.get('login_username', '13723715831')
         login_password = sys_config.get('login_password', 'HU1234pp')
         login_user_type = sys_config.get('login_user_type', '个人用户')
@@ -2378,7 +2395,7 @@ def main():
         page = context.new_page()
         
         # 登录
-        if not auto_login(page):
+        if not auto_login(page, CASE_DATA.get("created_by", "")):
             print("登录失败")
             browser.close()
             return

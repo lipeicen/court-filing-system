@@ -168,10 +168,13 @@ def login():
                     session['username'] = username
                     session['user_type'] = user[2]
                     
-                    # 同步到 system_config（自动立案用）
-                    cur.execute("UPDATE system_config SET config_value = %s WHERE config_key = 'login_username'", (username,))
-                    cur.execute("UPDATE system_config SET config_value = %s WHERE config_key = 'login_password'", (password,))
-                    cur.execute("UPDATE system_config SET config_value = %s WHERE config_key = 'login_user_type'", (user[2],))
+                    # 同步到 system_config（按当前登录用户存储法院账号，自动立案用）
+                    cur.execute("INSERT INTO system_config (config_key, config_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE config_value = %s",
+                               (f'login_username_{username}', username, username))
+                    cur.execute("INSERT INTO system_config (config_key, config_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE config_value = %s",
+                               (f'login_password_{username}', password, password))
+                    cur.execute("INSERT INTO system_config (config_key, config_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE config_value = %s",
+                               (f'login_user_type_{username}', user[2], user[2]))
                     conn.commit()
                     
                     flash('登录成功', 'success')
@@ -378,7 +381,12 @@ def index():
 @login_required
 @app.route('/system-config', methods=['GET', 'POST'])
 def system_config_page():
-    """系统配置页面：修改法院登录账号密码和身份"""
+    """系统配置页面：修改当前登录用户对应的法院登录账号密码和身份"""
+    current_user = session.get('username', '')
+    if not current_user:
+        flash('请先登录', 'error')
+        return redirect(url_for('login'))
+
     conn = get_db()
     try:
         with conn.cursor() as cur:
@@ -387,23 +395,34 @@ def system_config_page():
                 password = request.form.get('login_password', '').strip()
                 user_type = request.form.get('login_user_type', '个人用户').strip()
                 
-                if username:
-                    cur.execute("UPDATE system_config SET config_value = %s WHERE config_key = 'login_username'", (username,))
-                if password:
-                    cur.execute("UPDATE system_config SET config_value = %s WHERE config_key = 'login_password'", (password,))
-                
-                # 同步更新 system_users 表
                 if username and password:
+                    cur.execute("INSERT INTO system_config (config_key, config_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE config_value = %s",
+                               (f'login_username_{current_user}', username, username))
+                    cur.execute("INSERT INTO system_config (config_key, config_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE config_value = %s",
+                               (f'login_password_{current_user}', password, password))
+                    cur.execute("INSERT INTO system_config (config_key, config_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE config_value = %s",
+                               (f'login_user_type_{current_user}', user_type, user_type))
+                    
+                    # 同步更新 system_users 表（法院账号也作为可登录账号）
                     cur.execute("INSERT INTO system_users (username, password, user_type) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE password = %s, user_type = %s",
                                (username, password, user_type, password, user_type))
-                
-                conn.commit()
-                flash('系统配置已更新', 'success')
+                    
+                    conn.commit()
+                    flash('系统配置已更新', 'success')
+                else:
+                    flash('账号和密码不能为空', 'error')
                 return redirect(url_for('system_config_page'))
             
             cur.execute("SELECT config_key, config_value FROM system_config")
             config_rows = cur.fetchall()
-            config = {row[0]: row[1] for row in config_rows}
+            config_raw = {row[0]: row[1] for row in config_rows}
+            
+            # 提取当前用户的配置
+            config = {
+                'login_username': config_raw.get(f'login_username_{current_user}', ''),
+                'login_password': config_raw.get(f'login_password_{current_user}', ''),
+                'login_user_type': config_raw.get(f'login_user_type_{current_user}', '个人用户')
+            }
     finally:
         conn.close()
     
@@ -1311,18 +1330,8 @@ def upload_template():
             flash('无法识别Excel表头，请使用系统提供的模板', 'error')
             return redirect(url_for('index'))
 
-        # 获取当前登录用户
-        current_user = ''
-        try:
-            conn2 = get_db()
-            with conn2.cursor() as cur2:
-                cur2.execute("SELECT config_value FROM system_config WHERE config_key = 'login_username'")
-                row = cur2.fetchone()
-                if row:
-                    current_user = row[0]
-            conn2.close()
-        except:
-            pass
+        # 获取当前登录用户（管理后台账号）
+        current_user = session.get('username', '')
         
         conn = get_db()
         created_cases = []
@@ -1332,6 +1341,11 @@ def upload_template():
             with conn.cursor() as cur:
                 current_case_id = None
                 current_case_no = None
+
+                # 第一遍：预处理所有行数据并收集校验错误
+                preprocessed_rows = []
+                validation_errors = []
+                current_case_no_for_sub = None
 
                 for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
                     has_data = any(v is not None and str(v).strip() != '' for v in row)
@@ -1346,42 +1360,56 @@ def upload_template():
                     case_no = row_data.get('case_no', '')
 
                     if case_no:
+                        # 检查案件编号是否已存在
                         cur.execute("SELECT id FROM cases WHERE case_no = %s", (case_no,))
                         if cur.fetchone():
-                            failed_cases.append(f'{case_no} (第{row_idx}行): 案件编号已存在')
-                            current_case_id = None
-                            current_case_no = None
+                            validation_errors.append(f'{case_no} (第{row_idx}行): 案件编号已存在')
+                            current_case_no_for_sub = None
                             continue
 
+                        # 检查必填字段
                         required_fields = ['case_name', 'applicant_name', 'applicant_cert_no',
                                            'respondent_name', 'respondent_id', 'court_name',
                                            'preserve_amount', 'property_type']
                         missing = [f for f in required_fields if not row_data.get(f)]
                         if missing:
-                            failed_cases.append(f'{case_no} (第{row_idx}行): 缺少必填字段 {", ".join(missing)}')
-                            current_case_id = None
-                            current_case_no = None
+                            validation_errors.append(f'{case_no} (第{row_idx}行): 缺少必填字段 {", ".join(missing)}')
+                            current_case_no_for_sub = None
                             continue
 
-                        current_case_id = _insert_case(cur, row_data, current_user)
-                        current_case_no = case_no
-                        created_cases.append(case_no)
-
-                        _insert_property(cur, current_case_id, row_data)
-                        _insert_agent(cur, current_case_id, row_data)
+                        current_case_no_for_sub = case_no
 
                     else:
-                        if current_case_id is None:
-                            failed_cases.append(f'第{row_idx}行: 案件编号为空且无前序主行，无法识别归属')
+                        # 子行（财产线索/代理人）必须归属到前序主行
+                        if current_case_no_for_sub is None:
+                            validation_errors.append(f'第{row_idx}行: 案件编号为空且无前序主行，无法识别归属')
                             continue
 
-                        if row_data.get('property_type'):
+                    preprocessed_rows.append((row_idx, case_no, row_data))
+
+                # 若存在任何校验错误，直接回滚并返回，不写入任何数据
+                if validation_errors:
+                    conn.rollback()
+                    for err in validation_errors:
+                        failed_cases.append(err)
+                else:
+                    # 第二遍：所有校验通过后才执行插入
+                    current_case_id = None
+                    current_case_no = None
+                    for row_idx, case_no, row_data in preprocessed_rows:
+                        if case_no:
+                            current_case_id = _insert_case(cur, row_data, current_user)
+                            current_case_no = case_no
+                            created_cases.append(case_no)
                             _insert_property(cur, current_case_id, row_data)
-
-                        if row_data.get('agent_name'):
                             _insert_agent(cur, current_case_id, row_data)
+                        else:
+                            if row_data.get('property_type'):
+                                _insert_property(cur, current_case_id, row_data)
+                            if row_data.get('agent_name'):
+                                _insert_agent(cur, current_case_id, row_data)
 
-                conn.commit()
+                    conn.commit()
         except Exception as e:
             conn.rollback()
             flash(f'批量导入失败: {str(e)}', 'error')

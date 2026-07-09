@@ -1,15 +1,56 @@
 import asyncio
 import os
-from utils.ocr_captcha import ocr_solver
 import sys
+import asyncio
+import pymysql
 
 sys.path.insert(0, r"C:\court-auto-filing")
 
+from utils.ocr_captcha import ocr_solver
 from core.browser_controller import CourtBrowser
 from config import settings
 
+def load_system_config(created_by=''):
+    """按 created_by 读取对应的法院系统账号配置"""
+    try:
+        conn = pymysql.connect(
+            host=settings.DB_HOST, port=settings.DB_PORT, user=settings.DB_USER,
+            password=settings.DB_PASSWORD, database=settings.DB_NAME,
+            charset="utf8mb4"
+        )
+        cursor = conn.cursor()
+        cursor.execute("SELECT config_key, config_value FROM system_config")
+        config = {row[0]: row[1] for row in cursor.fetchall()}
+        cursor.close()
+        conn.close()
+        
+        if created_by:
+            username = config.get(f'login_username_{created_by}', '')
+            password = config.get(f'login_password_{created_by}', '')
+            user_type = config.get(f'login_user_type_{created_by}', '个人用户')
+            if username and password:
+                config['COURT_USERNAME'] = username
+                config['COURT_PASSWORD'] = password
+                config['COURT_USER_TYPE'] = user_type
+                print(f"使用账号配置: {created_by} -> {username}")
+                return config
+        
+        # 兜底：使用 .env 中的配置
+        config['COURT_USERNAME'] = settings.COURT_USERNAME
+        config['COURT_PASSWORD'] = settings.COURT_PASSWORD
+        config['COURT_USER_TYPE'] = '个人用户'
+        return config
+    except Exception as e:
+        print(f"加载系统配置失败: {e}")
+        return {}
+
 """自动登录 - 使用 OCR"""
-async def main():
+async def main(created_by=''):
+    
+    # 加载对应账号配置
+    cfg = load_system_config(created_by)
+    court_username = cfg.get('COURT_USERNAME', settings.COURT_USERNAME)
+    court_password = cfg.get('COURT_PASSWORD', settings.COURT_PASSWORD)
     
     browser = CourtBrowser()
     
@@ -45,8 +86,8 @@ async def main():
         print(f"[2/5] 找到 {len(inputs)} 个输入框")
         
         if len(inputs) >= 2:
-            await inputs[0].fill(settings.COURT_USERNAME)
-            await inputs[1].fill(settings.COURT_PASSWORD)
+            await inputs[0].fill(court_username)
+            await inputs[1].fill(court_password)
             print("[3/5] 已填写账号密码")
         
         # 处理验证码
@@ -103,4 +144,4 @@ async def main():
         await browser.close()
 
 if __name__ == "__main__":
-    asyncio.run(auto_login())
+    asyncio.run(main())
